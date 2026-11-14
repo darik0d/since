@@ -8,9 +8,10 @@ type Props = {
   initial: Settings;
   telegram: { configured: boolean; bot: string | null };
   lastAlert: { label: string; message: string; ok: boolean; error: string | null; sent_at: string } | null;
+  granola: { folder: boolean; last_sync: string | null } | null;
 };
 
-export function SettingsForm({ initial, telegram, lastAlert }: Props) {
+export function SettingsForm({ initial, telegram, lastAlert, granola }: Props) {
   const [s, setS] = useState(initial);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState("");
@@ -89,6 +90,25 @@ export function SettingsForm({ initial, telegram, lastAlert }: Props) {
         </Row>
       </div>
 
+      <div className="glass card" style={{ display: "grid", gap: 12 }}>
+        <h2 style={{ margin: 0 }}>Email signature</h2>
+        <p className="muted" style={{ margin: 0, fontSize: 13 }}>Used at the end of reconnect emails.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <label className="field">
+            Your name
+            <input className="input" value={s["investor.name"] ?? ""} onChange={(e) => setS({ ...s, "investor.name": e.target.value })}
+              onBlur={(e) => patch({ "investor.name": e.target.value.trim() })} />
+          </label>
+          <label className="field">
+            Fund
+            <input className="input" value={s["investor.fund"] ?? ""} onChange={(e) => setS({ ...s, "investor.fund": e.target.value })}
+              onBlur={(e) => patch({ "investor.fund": e.target.value.trim() })} />
+          </label>
+        </div>
+      </div>
+
+      {granola && <GranolaCard folder={granola.folder} initialLastSync={granola.last_sync} />}
+
       {lastAlert && (
         <div className="glass card" style={{ gridColumn: "1 / -1", display: "grid", gap: 8 }}>
           <h2 style={{ margin: 0 }}>Last alert</h2>
@@ -126,5 +146,40 @@ function Toggle({ on, locked, onChange }: { on: boolean; locked?: boolean; onCha
     >
       <span />
     </button>
+  );
+}
+
+function GranolaCard({ folder, initialLastSync }: { folder: boolean; initialLastSync: string | null }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [lastSync, setLastSync] = useState(initialLastSync);
+  async function sync() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await fetch("/api/granola/sync", { method: "POST" });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error ?? "sync failed");
+      setLastSync("just now");
+      setMsg(`${j.seen} note${j.seen === 1 ? "" : "s"} checked · ${j.pending} new “not yet”${j.pending === 1 ? "" : "s"} in the inbox`);
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="glass card" style={{ display: "grid", gap: 12 }}>
+      <h2 style={{ margin: 0 }}>Granola meeting notes</h2>
+      <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+        Since reads new meeting notes every 10 minutes and puts any &ldquo;not yet&rdquo; you gave into the Inbox.{" "}
+        {folder ? "Only meetings in your Since folder in Granola are read." : "All your Granola meetings are read (set a Since folder to limit this)."}
+      </p>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <button className="btn" disabled={busy} onClick={sync}>{busy ? "Syncing…" : "Sync now"}</button>
+        <span className="muted mono" style={{ fontSize: 12 }}>last sync: {lastSync ?? "never"}</span>
+      </div>
+      {msg && <div className="muted" style={{ fontSize: 13 }}>{msg}</div>}
+    </div>
   );
 }

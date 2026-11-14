@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const icons = {
   list: <path d="M4 6h16M4 12h16M4 18h10" />,
@@ -26,6 +27,13 @@ const links: { href: string; label: string; icon: keyof typeof icons }[] = [
 
 export function Nav() {
   const path = usePathname();
+  const [pending, setPending] = useState(0);
+  useEffect(() => {
+    const load = () => fetch("/api/inbound").then((r) => r.json()).then((j) => setPending(j.pending ?? 0)).catch(() => {});
+    load();
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
+  }, [path]);
   return (
     <>
       {links.map((l) => {
@@ -36,6 +44,7 @@ export function Nav() {
               {icons[l.icon]}
             </svg>
             {l.label}
+            {l.href === "/inbox" && pending > 0 && <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 650, color: "#fff", background: "#2563eb", borderRadius: 999, padding: "1px 7px" }}>{pending}</span>}
           </Link>
         );
       })}

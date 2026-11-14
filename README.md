@@ -80,3 +80,7 @@ Fallback (not in use): `docker-compose.yml` + Caddy + `deploy/*.sh` on any VM, s
   Note: fresh scrapes are rate-limited to 10/min; the client retries with `retry-after` and pages are shared for 90 s.
 - `POST /news/search` (by domain and natural language): independent coverage for announcements.
 - Monitor types used: `extract` (market declarations), `page` (blog, job board, GitHub releases), `search` (independent coverage, LinkedIn/X).
+
+## Other integrations used
+
+- Granola (`GET /v1/notes?created_after&folder_id&cursor`, `GET /v1/notes/{id}?include=transcript`, `GET /v1/notes/{id}/transcript`): polled every 10 min + "Sync now"; meeting summaries and transcripts go through the same "not yet" extractor (verbatim-quote guard) into the Inbox, so a pass given in a call becomes a pending watch without retyping.

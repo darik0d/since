@@ -1,0 +1,5 @@
+.inbox-card { display: grid; gap: 10px; }
+.inbox-head { display: flex; gap: 10px; align-items: center; min-width: 0; flex-wrap: wrap; }
+.inbox-src-granola { color: #6d28d9; background: rgba(237, 233, 254, 0.9); }
+.inbox-src-email { color: #1d4ed8; background: rgba(219, 234, 254, 0.85); }
+.inbox-src-paste { color: #475569; background: rgba(226, 232, 240, 0.8); }
