@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { query } from "@/lib/db";
 import { context, ContextApiError } from "@/lib/context";
 
 export const runtime = "nodejs";
@@ -9,8 +9,7 @@ export const dynamic = "force-dynamic";
 // Context.dev fires the webhook if a change is found.
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const conn = db();
-  const monitors = conn.prepare("SELECT id FROM monitors WHERE condition_id = ?").all(Number(id)) as { id: string }[];
+  const monitors = await query<{ id: string }>("SELECT id FROM monitors WHERE condition_id = $1", [Number(id)]);
   if (monitors.length === 0) return NextResponse.json({ ok: false, error: "no monitors for condition" }, { status: 404 });
 
   const results = await Promise.all(
@@ -23,8 +22,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       }
     }),
   );
-  conn
-    .prepare("INSERT INTO timeline_events (condition_id, kind, detail) VALUES (?, 'recheck_requested', ?)")
-    .run(Number(id), JSON.stringify(results));
+  await query("INSERT INTO timeline_events (condition_id, kind, detail) VALUES ($1, 'recheck_requested', $2)", [
+    Number(id),
+    JSON.stringify(results),
+  ]);
   return NextResponse.json({ ok: true, results });
 }

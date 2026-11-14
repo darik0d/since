@@ -1,4 +1,4 @@
-import { db, type WebhookEventRow } from "@/lib/db";
+import { query, type WebhookEventRow } from "@/lib/db";
 import { AutoRefresh } from "./AutoRefresh";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +11,8 @@ function pretty(raw: string) {
   }
 }
 
-export default function WebhookLog() {
-  const rows = db().prepare("SELECT * FROM webhook_events ORDER BY id DESC LIMIT 100").all() as WebhookEventRow[];
+export default async function WebhookLog() {
+  const rows = await query<WebhookEventRow>("SELECT * FROM webhook_events ORDER BY id DESC LIMIT 100");
   const base = process.env.PUBLIC_BASE_URL ?? "";
 
   return (
@@ -53,7 +53,7 @@ export default function WebhookLog() {
               {rows.map((r) => (
                 <tr key={r.id}>
                   <td className="mono muted">{r.id}</td>
-                  <td className="mono">{r.received_at.replace("T", " ").replace("Z", "")}</td>
+                  <td className="mono">{r.received_at.replace("T", " ").replace(/\.\d+Z$/, "")}</td>
                   <td>
                     <span className="mono">{r.event ?? "?"}</span>
                     {r.attempt && r.attempt > 1 ? <div className="muted">attempt {r.attempt}</div> : null}

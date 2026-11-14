@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# FALLBACK ONLY: primary deploy is Aiven Runtime. Not used unless Runtime access fails.
 # Run ONCE on a fresh Vultr Ubuntu 24.04 VM as root:  bash vultr-bootstrap.sh
 set -euo pipefail
 apt-get update

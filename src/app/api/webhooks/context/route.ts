@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { one, query } from "@/lib/db";
 import { verifyContextSignature } from "@/lib/webhook";
 
 export const runtime = "nodejs";
@@ -19,12 +19,11 @@ export async function POST(req: Request) {
   const monitorId: string | null =
     parsed?.data?.run?.monitor_id ?? parsed?.data?.change?.monitor_id ?? parsed?.data?.monitor_id ?? null;
 
-  const conn = db();
   const secrets: string[] = [];
   if (monitorId) {
-    const row = conn.prepare("SELECT webhook_secret FROM monitors WHERE id = ?").get(monitorId) as
-      | { webhook_secret: string | null }
-      | undefined;
+    const row = await one<{ webhook_secret: string | null }>("SELECT webhook_secret FROM monitors WHERE id = $1", [
+      monitorId,
+    ]);
     if (row?.webhook_secret) secrets.push(row.webhook_secret);
   }
   for (const s of (process.env.CONTEXT_WEBHOOK_SECRETS || "").split(",")) if (s.trim()) secrets.push(s.trim());
@@ -38,38 +37,36 @@ export async function POST(req: Request) {
 
   const contextId = h.get("x-context-id") ?? parsed?.id ?? null;
   const duplicate = contextId
-    ? conn.prepare("SELECT id FROM webhook_events WHERE context_id = ? AND signature_ok = 1 LIMIT 1").get(contextId)
+    ? await one<{ id: number }>("SELECT id FROM webhook_events WHERE context_id = $1 AND signature_ok LIMIT 1", [contextId])
     : undefined;
 
-  const info = conn
-    .prepare(
-      `INSERT INTO webhook_events (context_id, delivery_id, attempt, event, monitor_id, signature_ok, signature_note, headers_json, body_raw)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
+  const inserted = await one<{ id: number }>(
+    `INSERT INTO webhook_events (context_id, delivery_id, attempt, event, monitor_id, signature_ok, signature_note, headers_json, body_raw)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    [
       contextId,
       h.get("x-context-delivery-id"),
       Number(h.get("x-context-attempt")) || null,
       h.get("x-context-event") ?? parsed?.event ?? null,
       monitorId,
-      sig.ok ? 1 : 0,
-      duplicate ? `${sig.note}; duplicate of #${(duplicate as { id: number }).id}` : sig.note,
+      sig.ok,
+      duplicate ? `${sig.note}; duplicate of #${duplicate.id}` : sig.note,
       JSON.stringify(headers),
       raw,
-    );
+    ],
+  );
+  const logged = inserted?.id;
 
   if (!sig.ok && process.env.WEBHOOK_ENFORCE_SIGNATURE === "true") {
-    return NextResponse.json({ ok: false, error: sig.note, logged: info.lastInsertRowid }, { status: 401 });
+    return NextResponse.json({ ok: false, error: sig.note, logged }, { status: 401 });
   }
-  return NextResponse.json({ ok: true, logged: Number(info.lastInsertRowid), signature: sig.note });
+  return NextResponse.json({ ok: true, logged, signature: sig.note });
 }
 
 // Recent events (for the Webhook log screen / quick curl checks).
 export async function GET() {
-  const rows = db()
-    .prepare(
-      "SELECT id, context_id, event, monitor_id, signature_ok, signature_note, received_at FROM webhook_events ORDER BY id DESC LIMIT 50",
-    )
-    .all();
+  const rows = await query(
+    "SELECT id, context_id, event, monitor_id, signature_ok, signature_note, received_at FROM webhook_events ORDER BY id DESC LIMIT 50",
+  );
   return NextResponse.json({ events: rows });
 }

@@ -1,12 +1,9 @@
+# FALLBACK ONLY (primary deploy: Aiven Runtime from the Dockerfile). DB = Aiven PostgreSQL via DATABASE_URL in .env.
 services:
   app:
     build: .
     restart: unless-stopped
     env_file: .env
-    environment:
-      DATABASE_PATH: /data/since.db
-    volumes:
-      - since-data:/data
     expose:
       - "3000"
 
@@ -27,6 +24,5 @@ services:
       - app
 
 volumes:
-  since-data:
   caddy-data:
   caddy-config:

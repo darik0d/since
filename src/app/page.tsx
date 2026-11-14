@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { db } from "@/lib/db";
+import { one, query } from "@/lib/db";
 import { StatusChip, type Status } from "@/components/StatusChip";
 
 export const dynamic = "force-dynamic";
@@ -14,22 +14,20 @@ type Row = {
   statuses: string | null;
 };
 
-export default function Watchlist() {
-  const conn = db();
-  const rows = conn
-    .prepare(
-      `SELECT s.id, s.domain, s.name, s.logo_url, s.met_on, s.met_where,
-              GROUP_CONCAT(c.status, ',') AS statuses
-       FROM startups s LEFT JOIN conditions c ON c.startup_id = s.id
-       GROUP BY s.id ORDER BY s.created_at DESC`,
-    )
-    .all() as Row[];
-  const { met } = conn
-    .prepare(
-      `SELECT COUNT(*) AS met FROM conditions
-       WHERE status IN ('reported','confirmed') AND updated_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-7 days')`,
-    )
-    .get() as { met: number };
+export default async function Watchlist() {
+  const rows = await query<Row>(
+    `SELECT s.id, s.domain, s.name, s.logo_url, to_char(s.met_on, 'YYYY-MM-DD') AS met_on, s.met_where,
+            string_agg(c.status, ',' ORDER BY c.id) AS statuses
+     FROM startups s LEFT JOIN conditions c ON c.startup_id = s.id
+     GROUP BY s.id ORDER BY s.created_at DESC`,
+  );
+  const met =
+    (
+      await one<{ met: number }>(
+        `SELECT COUNT(*) AS met FROM conditions
+         WHERE status IN ('reported','confirmed') AND updated_at >= now() - interval '7 days'`,
+      )
+    )?.met ?? 0;
 
   return (
     <>

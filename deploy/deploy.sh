@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# FALLBACK ONLY: primary deploy is Aiven Runtime. Not used unless Runtime access fails.
 # From your laptop (Git Bash / WSL / macOS):  ./deploy/deploy.sh root@<ip>
 # Copies the repo (without node_modules/.next/data) + .env to /opt/since and (re)starts the stack.
 set -euo pipefail
