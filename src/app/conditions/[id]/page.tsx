@@ -7,6 +7,7 @@ import { SourceBadge } from "@/components/SourceBadge";
 import { CheckButtons, MarkWrong } from "./Actions";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { fmtTime } from "@/lib/time";
+import { readiness, reconnectPath } from "@/lib/reconnect";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ const TL_LABEL: Record<string, string> = {
   recheck_requested: "Re-check requested",
   evidence_marked_wrong: "Evidence marked wrong",
   customer_site_found: "Customer's own site found",
+  reconnected: "Reconnected",
 };
 
 const ts = (s: string | null) => fmtTime(s);
@@ -58,7 +60,7 @@ export default async function ConditionPage({
   const wrongId = Number((await searchParams).wrong) || null;
   const c = await getCondition(id);
   if (!c) notFound();
-  const [evidence, tl, monitors, startup] = await Promise.all([
+  const [evidence, tl, monitors, startup, siblings] = await Promise.all([
     query<Ev>("SELECT * FROM evidence WHERE condition_id = $1 ORDER BY passes DESC, created_at DESC", [id]),
     query<Tl>("SELECT * FROM timeline_events WHERE condition_id = $1 ORDER BY at DESC, id DESC LIMIT 60", [id]),
     query<{ id: string; role: string; source_type: string }>("SELECT id, role, source_type FROM monitors WHERE condition_id = $1", [id]),
@@ -66,7 +68,10 @@ export default async function ConditionPage({
       "SELECT to_char(met_on,'FMDD Mon YYYY') AS met_on, met_where, logo_url, original_text, display_domain FROM startups WHERE id = $1",
       [c.startup_id],
     ),
+    query<{ status: string }>("SELECT status FROM conditions WHERE startup_id = $1", [c.startup_id]),
   ]);
+  const ready = readiness(siblings.map((x) => x.status));
+  const reconnect = ready.any ? reconnectPath(c.startup_id) : null;
   const s = startup[0];
   const passing = evidence.filter((e) => e.passes && !e.marked_wrong);
   const other = evidence.filter((e) => !e.passes || e.marked_wrong);
@@ -83,7 +88,14 @@ export default async function ConditionPage({
           </p>
           <h1 style={{ marginTop: 4 }}>{c.plain_words ?? c.original_words}</h1>
         </div>
-        {c.status !== "ask_at_checkin" && <CheckButtons id={id} />}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {reconnect && (
+            <Link href={reconnect} className={`btn${ready.all ? " btn-primary" : ""}`} title="Draft an email to the founder with the progress since your “not yet”">
+              ✉️ Reconnect
+            </Link>
+          )}
+          {c.status !== "ask_at_checkin" && <CheckButtons id={id} />}
+        </div>
       </div>
 
       <div className="detail-grid">
@@ -204,6 +216,7 @@ function TlDetail({ t }: { t: Tl }) {
   else if (t.kind === "webhook_received") text = `${d.event} · ${d.id ?? ""}`;
   else if (t.kind === "alert_sent") text = `${d.channel}, ${d.label}: ${d.ok ? "delivered" : `not delivered (${d.error})`}`;
   else if (t.kind === "customer_site_found") text = `${d.name}: ${d.domain}`;
+  else if (t.kind === "reconnected") text = `Email sent to ${d.to}`;
   else if (t.kind === "recheck_requested") text = "Context.dev monitors queued";
   else text = typeof d === "string" ? d : "";
   return text ? <div style={{ fontSize: 12.5 }}>{text}</div> : null;

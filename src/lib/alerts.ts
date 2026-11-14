@@ -5,6 +5,7 @@ import { llmJson } from "./llm";
 import { getSettings } from "./settings";
 import { esc, sendTelegram, telegramConfigured } from "./telegram";
 import type { Status } from "./types";
+import { readiness, reconnectUrl } from "./reconnect";
 
 // Alert rules (CLAUDE.md): confirmed = always; reported = on by default, labeled "founder-reported";
 // needs_review = off by default. Each alert: original wording, evidence URL, snapshot time,
@@ -21,8 +22,8 @@ export async function maybeAlert(conditionId: number, from: Status, to: Status, 
   if (to === "reported" && !s["alerts.reported"]) return;
   if (to === "needs_review" && !s["alerts.needs_review"]) return;
 
-  const c = await one<{ original_words: string; plain_words: string | null; company: string; domain: string; met_on: string | null; met_where: string | null }>(
-    `SELECT c.original_words, c.plain_words, COALESCE(s.name, s.domain) AS company, s.domain,
+  const c = await one<{ startup_id: number; original_words: string; plain_words: string | null; company: string; domain: string; met_on: string | null; met_where: string | null }>(
+    `SELECT c.startup_id, c.original_words, c.plain_words, COALESCE(s.name, s.domain) AS company, s.domain,
             to_char(s.met_on, 'FMDD Mon YYYY') AS met_on, s.met_where
      FROM conditions c JOIN startups s ON s.id = c.startup_id WHERE c.id = $1`,
     [conditionId],
@@ -62,11 +63,26 @@ export async function maybeAlert(conditionId: number, from: Status, to: Status, 
     return;
   }
   try {
+    const reconnect = to === "confirmed" || to === "reported" ? reconnectUrl(c.startup_id) : null;
     await sendTelegram(s["telegram.chat_id"], html, [
       { text: "Open in Since", url: link },
       ...(ev ? [{ text: "Mark as wrong", url: `${link}?wrong=${ev.id}` }] : []),
+      ...(reconnect ? [{ text: "✉️ Reconnect", url: reconnect }] : []),
     ]);
     await record(conditionId, ev?.id ?? null, "telegram", label, html, true, null);
+    // the last open condition just got confirmed: one extra "meets everything" alert
+    if (to === "confirmed" && from !== "confirmed") {
+      const st = await query<{ status: string }>("SELECT status FROM conditions WHERE startup_id = $1", [c.startup_id]);
+      if (readiness(st.map((x) => x.status)).all) {
+        const msg = `🎯 <b>${esc(c.company)} now meets everything you asked for</b>
+<i>You said${c.met_where ? ` at ${esc(c.met_where)}` : ""}${c.met_on ? ` on ${c.met_on}` : ""}.</i> Every condition is confirmed by an independent or platform source.`;
+        await sendTelegram(s["telegram.chat_id"], msg, [
+          ...(reconnect ? [{ text: "Draft reconnect email", url: reconnect }] : []),
+          { text: "Open", url: link },
+        ]);
+        await record(conditionId, ev?.id ?? null, "telegram", "meets everything", msg, true, null);
+      }
+    }
   } catch (e) {
     await record(conditionId, ev?.id ?? null, "telegram", label, html, false, (e as Error).message);
   }

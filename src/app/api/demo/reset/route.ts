@@ -15,6 +15,7 @@ const STORY = {
   display_domain: "nordwind.io",
   met_on: "2026-11-12",
   met_where: "Slush",
+  founder_name: "Mikko Nordwind (fictional)",
   text: "Come back when you have your first enterprise customer and you're selling in Germany. And when revenue is over €1M ARR.",
 };
 
@@ -56,9 +57,11 @@ export async function POST(req: Request) {
        WHERE id = ANY($1)`,
       [ids],
     );
+    await client.query("DELETE FROM reconnects WHERE startup_id = $1", [startup.id]);
     await client.query(
-      "UPDATE startups SET name = $2, display_domain = $3, met_on = $4, met_where = $5, original_text = $6 WHERE id = $1",
-      [startup.id, STORY.name, STORY.display_domain, STORY.met_on, STORY.met_where, STORY.text],
+      `UPDATE startups SET name = $2, display_domain = $3, met_on = $4, met_where = $5, original_text = $6,
+              founder_name = $7, founder_email = COALESCE($8, founder_email) WHERE id = $1`,
+      [startup.id, STORY.name, STORY.display_domain, STORY.met_on, STORY.met_where, STORY.text, STORY.founder_name, process.env.DEMO_FOUNDER_EMAIL || null],
     );
     await client.query("COMMIT");
   } catch (e) {

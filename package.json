@@ -11,7 +11,9 @@
     "webhook:test": "node --env-file-if-exists=.env scripts/send-test-webhook.mjs"
   },
   "dependencies": {
+    "@types/nodemailer": "^8.0.2",
     "next": "^15.5.0",
+    "nodemailer": "^6.10.1",
     "pg": "^8.23.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { one, query } from "@/lib/db";
 import { StatusChip, type Status } from "@/components/StatusChip";
 import { LiveRefresh } from "@/components/LiveRefresh";
-import { ago } from "@/lib/time";
+import { ago, fmtTime } from "@/lib/time";
+import { readiness, reconnectPath } from "@/lib/reconnect";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ type Row = {
   last_checked: string | null;
   latest_change: string | null;
   latest_change_at: string | null;
+  reconnected_at: string | null;
 };
 
 
@@ -31,7 +33,8 @@ export default async function Watchlist() {
               JOIN conditions c2 ON c2.id = t.condition_id
               WHERE c2.startup_id = s.id AND t.kind = 'status_changed' ORDER BY t.at DESC LIMIT 1) AS latest_change,
             (SELECT max(t.at) FROM timeline_events t JOIN conditions c2 ON c2.id = t.condition_id
-              WHERE c2.startup_id = s.id AND t.kind = 'status_changed') AS latest_change_at
+              WHERE c2.startup_id = s.id AND t.kind = 'status_changed') AS latest_change_at,
+            (SELECT max(sent_at) FROM reconnects r WHERE r.startup_id = s.id AND r.status = 'sent') AS reconnected_at
      FROM startups s LEFT JOIN conditions c ON c.startup_id = s.id
      GROUP BY s.id ORDER BY s.created_at DESC`,
   );
@@ -101,6 +104,7 @@ export default async function Watchlist() {
                       <div>
                         <div style={{ fontWeight: 600 }}>{r.name ?? r.domain}</div>
                         <div className="mono muted">{r.display_domain ?? r.domain}</div>
+                        <ReconnectCell r={r} />
                       </div>
                     </div>
                   </td>
@@ -133,5 +137,21 @@ export default async function Watchlist() {
         )}
       </div>
     </>
+  );
+}
+
+function ReconnectCell({ r }: { r: Row }) {
+  const ready = readiness(r.conditions.map((c) => c.status));
+  const href = ready.any ? reconnectPath(r.id) : null;
+  if (!href && !r.reconnected_at) return null;
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+      {href && (
+        <Link href={href} className={`btn btn-sm${ready.all ? " btn-primary" : ""}`}>
+          ✉️ Reconnect
+        </Link>
+      )}
+      {r.reconnected_at && <span className="muted" style={{ fontSize: 11.5 }} title={fmtTime(r.reconnected_at, { alwaysDate: true })}>Reconnected {ago(r.reconnected_at)}</span>}
+    </div>
   );
 }
