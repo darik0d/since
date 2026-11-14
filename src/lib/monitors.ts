@@ -1,3 +1,4 @@
+import { publicBase } from "./env";
 import { context, type CreateMonitorInput } from "./context";
 import { query } from "./db";
 import type { SiteMap } from "./sources";
@@ -114,7 +115,7 @@ export function planMonitors(c: DraftCondition, company: string, site: SiteMap):
 
 /** Monitors only make sense with a public HTTPS webhook target. */
 export function monitorsEnabled(): { ok: boolean; why?: string } {
-  const base = process.env.PUBLIC_BASE_URL ?? "";
+  const base = publicBase();
   if (process.env.MONITORS_DISABLED === "true") return { ok: false, why: "MONITORS_DISABLED=true" };
   if (!base.startsWith("https://")) return { ok: false, why: "PUBLIC_BASE_URL is not https (local dev): monitors not created" };
   return { ok: true };
@@ -137,7 +138,7 @@ export async function createMonitors(conditionId: number, domain: string, planne
       const mon = await context.createMonitor({
         ...m.input,
         schedule: { type: "interval", frequency: demo ? 10 : 30, unit: "minutes" },
-        webhook: { url: `${process.env.PUBLIC_BASE_URL}/api/webhooks/context`, events: ["change.detected"], retry: {} },
+        webhook: { url: `${publicBase()}/api/webhooks/context`, events: ["change.detected"], retry: {} },
       });
       await query(
         `INSERT INTO monitors (id, condition_id, target_type, target_json, source_type, webhook_secret, name, role)

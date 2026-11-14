@@ -1,3 +1,4 @@
+import { publicBase } from "./env";
 import { one, query } from "./db";
 import { llmJson } from "./llm";
 import { getSettings } from "./settings";
@@ -35,7 +36,7 @@ export async function maybeAlert(conditionId: number, from: Status, to: Status, 
   );
 
   const sentence = await alertSentence(c.company, c.original_words, to, ev?.excerpt ?? "", note);
-  const base = process.env.PUBLIC_BASE_URL ?? "";
+  const base = publicBase();
   const link = `${base}/conditions/${conditionId}`;
   const html = [
     `<b>${LABEL[to]} · ${esc(c.company)}</b>`,

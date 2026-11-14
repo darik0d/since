@@ -1,3 +1,4 @@
+import { publicBase } from "@/lib/env";
 import { NextResponse } from "next/server";
 import { one } from "@/lib/db";
 import { monitorsEnabled } from "@/lib/monitors";
@@ -25,7 +26,7 @@ export async function GET() {
       llm_provider: process.env.LLM_PROVIDER ?? "openai",
       llm_model: process.env.OPENAI_MODEL || "gpt-5.4-mini",
       monitors: monitorsEnabled(),
-      public_base_url: process.env.PUBLIC_BASE_URL ?? null,
+      public_base_url: (publicBase() || null),
     },
     { status: db_error ? 503 : 200 },
   );
