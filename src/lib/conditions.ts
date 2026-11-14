@@ -175,11 +175,14 @@ async function rememberCustomerSites(c: ConditionRow, result: CheckResult) {
   await query("UPDATE conditions SET params_json = params_json || $2::jsonb WHERE id = $1", [c.id, JSON.stringify({ customer_sites: sites })]);
   for (const f of fresh) {
     await timeline(c.id, "customer_site_found", { name: f.name, domain: f.domain, found_on: f.found_on });
+    const role = `${f.name}'s newsroom (customer's own site)`;
+    // already watching it (e.g. after a demo reset kept the monitors): don't create a second one
+    if (await one("SELECT 1 FROM monitors WHERE condition_id = $1 AND role = $2", [c.id, role])) continue;
     const site = await discoverSite(f.domain);
     const newsroom = site.blog[0] ?? `https://${f.domain}`;
     const r = await createMonitors(c.id, c.domain, [
       {
-        role: `${f.name}'s newsroom (customer's own site)`,
+        role,
         source_type: "independent",
         priority: "core",
         input: {

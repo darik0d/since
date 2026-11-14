@@ -129,6 +129,13 @@ ALTER TABLE monitors
   ADD COLUMN role TEXT;                        -- what this monitor watches, e.g. "founder blog"
 `,
   },
+  {
+    id: "003_display_domain",
+    sql: `
+-- What the UI shows instead of the real host (demo sites live on *.aiven.app, the story says nordwind.io).
+ALTER TABLE startups ADD COLUMN display_domain TEXT;
+`,
+  },
 ];
 
 const LOCK_KEY = 7_041_202_6; // arbitrary constant: one migrator at a time across instances

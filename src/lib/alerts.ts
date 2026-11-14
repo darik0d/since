@@ -1,4 +1,5 @@
 import { publicBase } from "./env";
+import { fmtTime } from "./time";
 import { one, query } from "./db";
 import { llmJson } from "./llm";
 import { getSettings } from "./settings";
@@ -22,7 +23,7 @@ export async function maybeAlert(conditionId: number, from: Status, to: Status, 
 
   const c = await one<{ original_words: string; plain_words: string | null; company: string; domain: string; met_on: string | null; met_where: string | null }>(
     `SELECT c.original_words, c.plain_words, COALESCE(s.name, s.domain) AS company, s.domain,
-            to_char(s.met_on, 'YYYY-MM-DD') AS met_on, s.met_where
+            to_char(s.met_on, 'FMDD Mon YYYY') AS met_on, s.met_where
      FROM conditions c JOIN startups s ON s.id = c.startup_id WHERE c.id = $1`,
     [conditionId],
   );

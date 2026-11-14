@@ -93,7 +93,7 @@ export function SettingsForm({ initial, telegram, lastAlert }: Props) {
         <div className="glass card" style={{ gridColumn: "1 / -1", display: "grid", gap: 8 }}>
           <h2 style={{ margin: 0 }}>Last alert</h2>
           <div className="muted mono" style={{ fontSize: 12 }}>
-            {lastAlert.sent_at.replace("T", " ").replace(/\.\d+Z$/, " UTC")} · {lastAlert.label} ·{" "}
+            {lastAlert.sent_at} · {lastAlert.label} ·{" "}
             {lastAlert.ok ? "delivered" : `not delivered: ${lastAlert.error}`}
           </div>
           <div className="alert-preview" dangerouslySetInnerHTML={{ __html: lastAlert.message.replace(/\n/g, "<br>") }} />

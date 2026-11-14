@@ -254,3 +254,6 @@ pre.json {
 .alert-preview { font-size: 13.5px; line-height: 1.55; padding: 14px 16px; border-radius: 14px; background: rgba(255, 255, 255, 0.75); box-shadow: var(--pill-shadow); }
 .alert-preview a { color: var(--accent-deep); }
 .ev-highlight { box-shadow: 0 0 0 2px #ea580c, var(--glass-shadow) !important; }
+
+mark.hl { background: rgba(37, 99, 235, 0.14); color: var(--ink); font-style: normal; font-weight: 600; padding: 0 3px; border-radius: 4px; }
+.watching-text { color: var(--ink-3); font-size: 12.5px; }

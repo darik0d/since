@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { one, query } from "@/lib/db";
 import { StatusChip, type Status } from "@/components/StatusChip";
+import { LiveRefresh } from "@/components/LiveRefresh";
+import { ago } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
 type Row = {
   id: number;
   domain: string;
+  display_domain: string | null;
   name: string | null;
   logo_url: string | null;
   met_on: string | null;
@@ -17,15 +20,10 @@ type Row = {
   latest_change_at: string | null;
 };
 
-const ago = (iso: string | null) => {
-  if (!iso) return "—";
-  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
-};
 
 export default async function Watchlist() {
   const rows = await query<Row>(
-    `SELECT s.id, s.domain, s.name, s.logo_url, to_char(s.met_on, 'YYYY-MM-DD') AS met_on, s.met_where,
+    `SELECT s.id, s.domain, s.display_domain, s.name, s.logo_url, to_char(s.met_on, 'FMDD Mon YYYY') AS met_on, s.met_where,
             COALESCE(json_agg(json_build_object('id', c.id, 'status', c.status, 'label', COALESCE(c.plain_words, c.original_words))
                      ORDER BY c.id) FILTER (WHERE c.id IS NOT NULL), '[]') AS conditions,
             max(c.last_checked_at) AS last_checked,
@@ -47,6 +45,7 @@ export default async function Watchlist() {
 
   return (
     <>
+      <LiveRefresh everyMs={5000} />
       <div className="page-head">
         <div>
           <h1>Watchlist</h1>
@@ -101,21 +100,25 @@ export default async function Watchlist() {
                       )}
                       <div>
                         <div style={{ fontWeight: 600 }}>{r.name ?? r.domain}</div>
-                        <div className="mono muted">{r.domain}</div>
+                        <div className="mono muted">{r.display_domain ?? r.domain}</div>
                       </div>
                     </div>
                   </td>
                   <td>
-                    <div className="mono">{r.met_on ?? "—"}</div>
+                    <div style={{ whiteSpace: "nowrap" }}>{r.met_on ?? "—"}</div>
                     <div className="muted">{r.met_where}</div>
                   </td>
                   <td>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {r.conditions.map((c) => (
-                        <Link key={c.id} href={`/conditions/${c.id}`} title={c.label}>
-                          <StatusChip status={c.status}>{c.label.length > 34 ? c.label.slice(0, 32) + "…" : c.label}</StatusChip>
-                        </Link>
-                      ))}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      {r.conditions.map((c) => {
+                        const label = c.label.length > 34 ? c.label.slice(0, 32) + "…" : c.label;
+                        return (
+                          <Link key={c.id} href={`/conditions/${c.id}`} title={`${c.label} (${c.status.replace("_", " ")})`}>
+                            {/* nothing happened yet: plain text, chips only for real signals */}
+                            {c.status === "watching" ? <span className="watching-text">{label}</span> : <StatusChip status={c.status}>{label}</StatusChip>}
+                          </Link>
+                        );
+                      })}
                     </div>
                   </td>
                   <td style={{ maxWidth: 280 }}>

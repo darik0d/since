@@ -2,6 +2,7 @@ import { getSettings } from "@/lib/settings";
 import { botInfo, telegramConfigured } from "@/lib/telegram";
 import { query } from "@/lib/db";
 import { SettingsForm } from "./SettingsForm";
+import { fmtTime } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export default async function Settings() {
       <SettingsForm
         initial={s}
         telegram={{ configured: telegramConfigured(), bot: bot?.username ?? null }}
-        lastAlert={last[0] ?? null}
+        lastAlert={last[0] ? { ...last[0], sent_at: fmtTime(last[0].sent_at, { alwaysDate: true }) } : null}
       />
     </>
   );

@@ -5,6 +5,8 @@ import { query } from "@/lib/db";
 import { StatusChip } from "@/components/StatusChip";
 import { SourceBadge } from "@/components/SourceBadge";
 import { CheckButtons, MarkWrong } from "./Actions";
+import { LiveRefresh } from "@/components/LiveRefresh";
+import { fmtTime } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +31,21 @@ const TL_LABEL: Record<string, string> = {
   customer_site_found: "Customer's own site found",
 };
 
-const ts = (s: string | null) => (s ? s.replace("T", " ").replace(/\.\d+Z$/, " UTC") : "—");
+const ts = (s: string | null) => fmtTime(s);
+
+/** The investor's whole sentence, with this condition's words highlighted (quotes/apostrophes normalized). */
+function Sentence({ full, part }: { full: string | null; part: string }) {
+  const n = (x: string) => x.replace(/[’‘]/g, "'").replace(/[“”]/g, '"').toLowerCase();
+  const i = full ? n(full).indexOf(n(part)) : -1;
+  if (!full || i < 0) return <>&ldquo;{part}&rdquo;</>;
+  return (
+    <>
+      &ldquo;{full.slice(0, i)}
+      <mark className="hl">{full.slice(i, i + part.length)}</mark>
+      {full.slice(i + part.length)}&rdquo;
+    </>
+  );
+}
 
 export default async function ConditionPage({
   params,
@@ -46,8 +62,8 @@ export default async function ConditionPage({
     query<Ev>("SELECT * FROM evidence WHERE condition_id = $1 ORDER BY passes DESC, created_at DESC", [id]),
     query<Tl>("SELECT * FROM timeline_events WHERE condition_id = $1 ORDER BY at DESC, id DESC LIMIT 60", [id]),
     query<{ id: string; role: string; source_type: string }>("SELECT id, role, source_type FROM monitors WHERE condition_id = $1", [id]),
-    query<{ met_on: string | null; met_where: string | null; logo_url: string | null }>(
-      "SELECT to_char(met_on,'YYYY-MM-DD') AS met_on, met_where, logo_url FROM startups WHERE id = $1",
+    query<{ met_on: string | null; met_where: string | null; logo_url: string | null; original_text: string | null; display_domain: string | null }>(
+      "SELECT to_char(met_on,'FMDD Mon YYYY') AS met_on, met_where, logo_url, original_text, display_domain FROM startups WHERE id = $1",
       [c.startup_id],
     ),
   ]);
@@ -58,11 +74,12 @@ export default async function ConditionPage({
 
   return (
     <>
+      <LiveRefresh everyMs={3000} />
       <div className="page-head">
         <div>
           <p style={{ margin: 0 }}>
             <Link href="/" className="muted">Watchlist</Link> <span className="muted">/</span>{" "}
-            <span className="mono">{c.domain}</span>
+            <span>{c.company}</span> <span className="mono muted">{s?.display_domain ?? c.domain}</span>
           </p>
           <h1 style={{ marginTop: 4 }}>{c.plain_words ?? c.original_words}</h1>
         </div>
@@ -72,7 +89,9 @@ export default async function ConditionPage({
       <div className="detail-grid">
         <div style={{ display: "grid", gap: 18, alignContent: "start", minWidth: 0 }}>
           <div className="glass card" style={{ display: "grid", gap: 10 }}>
-            <div className="quote" style={{ fontSize: 16 }}>&ldquo;{c.original_words}&rdquo;</div>
+            <div className="quote" style={{ fontSize: 16 }}>
+              <Sentence full={s?.original_text ?? null} part={c.original_words} />
+            </div>
             <div className="muted">
               {c.company} · said &ldquo;not yet&rdquo; {s?.met_on ? `on ${s.met_on}` : ""} {s?.met_where ? `at ${s.met_where}` : ""}
             </div>

@@ -1,6 +1,7 @@
 import { publicBase } from "@/lib/env";
 import { query, type WebhookEventRow } from "@/lib/db";
 import { AutoRefresh } from "./AutoRefresh";
+import { fmtTime } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 

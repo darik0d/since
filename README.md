@@ -45,6 +45,10 @@ npm run webhook:test        # signed fake webhook -> shows "verified" in /webhoo
 - `GET  /api/webhooks/context`: last 50 events (JSON). UI: `/webhooks` (auto-refresh).
 - `GET  /api/health`: DB, Context.dev key, `llm` flag, monitors on/off; 503 if the database is unreachable.
 
+Demo reset before judging (resets both demo sites, seeds Nordwind / Slush / Anna's sentence, clears evidence +
+timeline + alerts but keeps monitors, then captures a fresh baseline):
+`curl -X POST -H "X-Demo-Key: $DEMO_KEY" https://<since-app>/api/demo/reset`
+
 Dev helper: `node scripts/try-notyet.mjs <domain> "<come back when...>"` runs parse → start → check and prints the evidence.
 
 ## Database
