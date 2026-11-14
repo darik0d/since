@@ -262,3 +262,11 @@ mark.hl { background: rgba(37, 99, 235, 0.14); color: var(--ink); font-style: no
 .reconnect-grid { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 18px; align-items: start; }
 @media (max-width: 900px) { .reconnect-grid { grid-template-columns: 1fr; } }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* signed-in investor */
+.account { display: flex; align-items: center; gap: 10px; margin-top: auto; padding: 10px; border-radius: 14px; background: rgba(255, 255, 255, 0.55); border: 1px solid rgba(17, 24, 39, 0.06); }
+.account:hover { background: #fff; }
+.account-avatar { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; background: linear-gradient(180deg, #4a86ff, #1d4ed8); }
+.account-name { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-fund { display: block; font-size: 11.5px; color: var(--muted, #6b7280); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account + .sidebar-foot { margin-top: 0; padding-top: 6px; }

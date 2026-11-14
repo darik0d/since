@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Nav } from "@/components/Nav";
+import { Account } from "@/components/Account";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -26,7 +27,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </div>
             <Nav />
-            <div className="sidebar-foot">Monitored with Context.dev</div>
+            <Account />
+            <div className="sidebar-foot">Monitored with Context.dev &amp; Cala</div>
           </aside>
           <main className="main">{children}</main>
         </div>

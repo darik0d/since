@@ -35,7 +35,6 @@ export default async function ReconnectPage({ params, searchParams }: { params: 
             <span className="mono muted">{f.startup.display_domain ?? f.startup.domain}</span>
           </p>
           <h1 style={{ marginTop: 4 }}>Reconnect with {f.startup.founder_name ?? f.startup.name}</h1>
-          <p>Every fact in this email comes from Since&rsquo;s evidence. Edit the words, preview, then send. Nothing is sent automatically.</p>
         </div>
       </div>
       {sent[0] && (

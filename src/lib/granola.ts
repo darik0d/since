@@ -77,7 +77,12 @@ async function getNote(id: string): Promise<Note> {
 // Personal mailboxes say nothing about which company someone is from.
 const PERSONAL = new Set(["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "icloud.com", "me.com", "yahoo.com", "proton.me", "protonmail.com", "hey.com", "aol.com", "gmx.com", "gmx.de", "web.de"]);
 const domainOf = (e: string) => e.toLowerCase().split("@")[1] ?? "";
-const nameFromDomain = (d: string) => d.split(".")[0].replace(/^./, (c) => c.toUpperCase());
+/** "inferencemay.be" + title "Daria x Jesse @ InferenceMay" -> "InferenceMay" (the title's casing), else "Inferencemay". */
+const nameFromDomain = (d: string, title?: string | null) => {
+  const label = d.split(".")[0];
+  const m = title?.match(new RegExp(`\\b${label.replace(/[^a-z0-9-]/gi, "")}\\b`, "i"));
+  return m ? m[0] : label.replace(/^./, (c) => c.toUpperCase());
+};
 
 /**
  * Who was the meeting with? The first attendee/invitee outside the investor's own domain(s).
@@ -104,7 +109,7 @@ export function meetingCounterpart(n: Note) {
   const d = company ? domainOf(company.email) : null;
   return {
     startup_domain: d,
-    startup_name: d ? nameFromDomain(d) : null,
+    startup_name: d ? nameFromDomain(d, n.title ?? n.calendar_event?.event_title) : null,
     founder_email: who.email.toLowerCase(),
     founder_name: who.name?.trim() || null,
   };

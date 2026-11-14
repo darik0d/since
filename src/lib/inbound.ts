@@ -138,7 +138,8 @@ export async function ingest(item: IngestInput): Promise<{ id: number; status: I
     }
     if (k.founder_email) ex.founder_email = k.founder_email;
     if (k.founder_name) ex.founder_name = k.founder_name;
-    if (!ex.startup_name && k.startup_name) ex.startup_name = k.startup_name;
+    // same company, nicer casing from the meeting title ("Inferencemay" -> "InferenceMay")
+    if (k.startup_name && (!ex.startup_name || ex.startup_name.toLowerCase() === k.startup_name.toLowerCase())) ex.startup_name = k.startup_name;
     if (ex.startup_domain) ex.startup_domain = ex.startup_domain.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
   } catch (e) {
     status = "none";

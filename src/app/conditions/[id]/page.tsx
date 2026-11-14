@@ -192,7 +192,7 @@ export default async function ConditionPage({
           </ol>
         </div>
       </div>
-      <div className="muted" style={{ textAlign: "center", fontSize: 12, padding: 8 }}>Monitored with Context.dev</div>
+      <div className="muted" style={{ textAlign: "center", fontSize: 12, padding: 8 }}>Monitored with Context.dev &amp; Cala</div>
     </>
   );
 }

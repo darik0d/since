@@ -18,7 +18,7 @@ const DEFAULTS: Settings = {
   "telegram.enabled": true,
   "telegram.chat_id": null,
   "telegram.chat_title": null,
-  "investor.name": "Anna K.",
+  "investor.name": "Daria Matviichuk",
   "investor.fund": "Northstar Ventures",
   "granola.last_sync": null,
 };
