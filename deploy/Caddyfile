@@ -1,0 +1,15 @@
+# Auto-HTTPS via Let's Encrypt on <ip-with-dashes>.sslip.io
+{$SITE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}
+
+# M1.5: fictional demo sites, served from ./sites (uncomment when built)
+# nordwind.{$SITE_DOMAIN} {
+# 	root * /srv/sites/nordwind
+# 	file_server
+# }
+# kallio.{$SITE_DOMAIN} {
+# 	root * /srv/sites/kallio
+# 	file_server
+# }
