@@ -6,10 +6,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Remove a watch: delete its Context.dev monitors (frees slots), then the startup and everything under it.
+// :id is the numeric id or the startup's domain (DELETE /api/startups/wolt.com).
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const id = Number((await params).id);
-  const s = await one<{ domain: string }>("SELECT domain FROM startups WHERE id = $1", [id]);
+  const key = decodeURIComponent((await params).id);
+  const s = /^d+$/.test(key)
+    ? await one<{ id: number; domain: string }>("SELECT id, domain FROM startups WHERE id = $1", [Number(key)])
+    : await one<{ id: number; domain: string }>("SELECT id, domain FROM startups WHERE domain = $1", [key.toLowerCase()]);
   if (!s) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const id = s.id;
   const monitors = await query<{ id: string }>(
     "SELECT m.id FROM monitors m JOIN conditions c ON c.id = m.condition_id WHERE c.startup_id = $1",
     [id],
