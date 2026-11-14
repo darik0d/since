@@ -131,6 +131,8 @@ Needs review (orange outline), Ask at check-in (blue-gray), Expired (light gray,
 
 ## Architecture
 - One Next.js service in one Docker container.
+- LLM: OpenAI (OPENAI_API_KEY, LLM_PROVIDER=openai), a small current model with structured
+  JSON outputs. Used only to map "come back when..." into conditions and to write alert sentences.
 - Database: Aiven PostgreSQL (DATABASE_URL from env). Migrate off SQLite/better-sqlite3 NOW:
   Aiven Runtime containers are stateless, and Postgres is what makes the Aiven entry meaningful
   (evidence ledger, raw webhook log, status history/timeline).

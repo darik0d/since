@@ -13,13 +13,33 @@ npm run context:smoke       # Context.dev REST checks (usage, limits, monitors, 
 npm run webhook:test        # signed fake webhook -> shows "verified" in /webhooks
 ```
 
-## Endpoints (M0)
+## How a condition is checked
 
+1. **Map** (LLM, `src/lib/mapping.ts`): the investor's words become typed conditions
+   (`market_launch`, `hiring_push`, `announcement` customer/revenue/retention, `product_shipped`, `ask_at_checkin`).
+   The investor edits/confirms them on `/new`.
+2. **Verify** (`src/lib/verify/*`): deterministic rules over live data fetched through Context.dev
+   (scrape, news search) plus public job-board / GitHub APIs. The LLM only extracts claims with a verbatim
+   quote, which code checks against the source text.
+3. **Status** (`src/lib/conditions.ts`): platform/independent source passes → confirmed; founder-controlled
+   only → reported; ambiguous → needs_review. Revenue/retention are capped at reported. Press-release wires
+   count as founder-controlled. Every piece of evidence is stored with its source type, snapshot time and rule.
+4. **Monitors** (`src/lib/monitors.ts`): Context.dev monitors are only triggers for step 2 (created when
+   `PUBLIC_BASE_URL` is https).
+
+## Endpoints
+
+- `POST /api/notyet/parse`: domain + note → brand, discovered sources, draft conditions with "how we verify".
+- `POST /api/notyet/start`: store confirmed conditions, capture a baseline check, create monitors.
+- `POST /api/conditions/:id/check`: "Check now": run the verifier once via Context.dev (no monitor), return evidence + status.
+- `POST /api/conditions/:id/recheck`: "Re-check now": check now + run-monitor-now for the condition's monitors.
+- `POST /api/evidence/:id/wrong`: "Mark as wrong" → status recomputed from the remaining evidence.
 - `POST /api/webhooks/context`: stores every raw delivery, checks `X-Context-Signature`
   (HMAC-SHA256 of `t.rawBody`, 5 min tolerance). Logs unverified ones too unless `WEBHOOK_ENFORCE_SIGNATURE=true`.
 - `GET  /api/webhooks/context`: last 50 events (JSON). UI: `/webhooks` (auto-refresh).
-- `POST /api/conditions/:id/recheck`: run-monitor-now for a condition's monitors.
-- `GET  /api/health`: returns 503 if the database is unreachable.
+- `GET  /api/health`: DB, Context.dev key, `llm` flag, monitors on/off; 503 if the database is unreachable.
+
+Dev helper: `node scripts/try-notyet.mjs <domain> "<come back when...>"` runs parse → start → check and prints the evidence.
 
 ## Database
 
@@ -46,5 +66,7 @@ Fallback (not in use): `docker-compose.yml` + Caddy + `deploy/*.sh` on any VM, s
 - `POST /monitors`, `POST /monitors/{id}/run`, `DELETE /monitors/{id}`: the watching loop and "Re-check now".
 - Monitor webhooks (`change.detected`, `run.completed`), signature-verified: the real-time trigger.
 - `POST /brand/retrieve`: startup logos on the watchlist.
-- `POST /news/search`: independent coverage for announcements.
-- `POST /web/scrape`: baseline snapshots.
+- `POST /web/scrape` (markdown + HTML, `maxAgeMs: 0` for re-checks): every founder page, pricing page, careers page.
+  Note: fresh scrapes are rate-limited to 10/min; the client retries with `retry-after` and pages are shared for 90 s.
+- `POST /news/search` (by domain and natural language): independent coverage for announcements.
+- Monitor types used: `extract` (market declarations), `page` (blog, job board, GitHub releases), `search` (independent coverage, LinkedIn/X).

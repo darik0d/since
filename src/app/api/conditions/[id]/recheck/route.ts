@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { checkCondition } from "@/lib/conditions";
 import { context, ContextApiError } from "@/lib/context";
+import { query } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
-// "Re-check now": queue an immediate run for every monitor of this condition.
-// Context.dev fires the webhook if a change is found.
+// "Re-check now": run the verifier against the live web immediately, and queue an immediate
+// run for every Context.dev monitor of this condition (their webhooks trigger further re-checks).
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const monitors = await query<{ id: string }>("SELECT id FROM monitors WHERE condition_id = $1", [Number(id)]);
-  if (monitors.length === 0) return NextResponse.json({ ok: false, error: "no monitors for condition" }, { status: 404 });
-
-  const results = await Promise.all(
+  const id = Number((await params).id);
+  const monitors = await query<{ id: string }>("SELECT id FROM monitors WHERE condition_id = $1", [id]);
+  const queued = await Promise.all(
     monitors.map(async (m) => {
       try {
         const r = await context.runMonitorNow(m.id);
@@ -22,9 +22,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       }
     }),
   );
-  await query("INSERT INTO timeline_events (condition_id, kind, detail) VALUES ($1, 'recheck_requested', $2)", [
-    Number(id),
-    JSON.stringify(results),
-  ]);
-  return NextResponse.json({ ok: true, results });
+  try {
+    const r = await checkCondition(id, { fresh: true, trigger: "re-check now" });
+    return NextResponse.json({ ok: true, status: r.condition.status, changed: r.changed, summary: r.result?.summary ?? null, monitors: queued });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: (e as Error).message, monitors: queued }, { status: 500 });
+  }
 }

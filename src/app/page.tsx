@@ -11,13 +11,29 @@ type Row = {
   logo_url: string | null;
   met_on: string | null;
   met_where: string | null;
-  statuses: string | null;
+  conditions: { id: number; status: Status; label: string }[];
+  last_checked: string | null;
+  latest_change: string | null;
+  latest_change_at: string | null;
+};
+
+const ago = (iso: string | null) => {
+  if (!iso) return "—";
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 };
 
 export default async function Watchlist() {
   const rows = await query<Row>(
     `SELECT s.id, s.domain, s.name, s.logo_url, to_char(s.met_on, 'YYYY-MM-DD') AS met_on, s.met_where,
-            string_agg(c.status, ',' ORDER BY c.id) AS statuses
+            COALESCE(json_agg(json_build_object('id', c.id, 'status', c.status, 'label', COALESCE(c.plain_words, c.original_words))
+                     ORDER BY c.id) FILTER (WHERE c.id IS NOT NULL), '[]') AS conditions,
+            max(c.last_checked_at) AS last_checked,
+            (SELECT t.detail->>'summary' || ' (' || (t.detail->>'to') || ')' FROM timeline_events t
+              JOIN conditions c2 ON c2.id = t.condition_id
+              WHERE c2.startup_id = s.id AND t.kind = 'status_changed' ORDER BY t.at DESC LIMIT 1) AS latest_change,
+            (SELECT max(t.at) FROM timeline_events t JOIN conditions c2 ON c2.id = t.condition_id
+              WHERE c2.startup_id = s.id AND t.kind = 'status_changed') AS latest_change_at
      FROM startups s LEFT JOIN conditions c ON c.startup_id = s.id
      GROUP BY s.id ORDER BY s.created_at DESC`,
   );
@@ -93,13 +109,20 @@ export default async function Watchlist() {
                     <div className="mono">{r.met_on ?? "—"}</div>
                     <div className="muted">{r.met_where}</div>
                   </td>
-                  <td style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {(r.statuses ?? "").split(",").filter(Boolean).map((s, i) => (
-                      <StatusChip key={i} status={s as Status} />
-                    ))}
+                  <td>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {r.conditions.map((c) => (
+                        <Link key={c.id} href={`/conditions/${c.id}`} title={c.label}>
+                          <StatusChip status={c.status}>{c.label.length > 34 ? c.label.slice(0, 32) + "…" : c.label}</StatusChip>
+                        </Link>
+                      ))}
+                    </div>
                   </td>
-                  <td className="muted">—</td>
-                  <td className="mono muted">—</td>
+                  <td style={{ maxWidth: 280 }}>
+                    <div style={{ fontSize: 13 }}>{r.latest_change ?? <span className="muted">—</span>}</div>
+                    {r.latest_change_at && <div className="mono muted" style={{ fontSize: 11.5 }}>{ago(r.latest_change_at)}</div>}
+                  </td>
+                  <td className="mono muted">{ago(r.last_checked)}</td>
                 </tr>
               ))}
             </tbody>

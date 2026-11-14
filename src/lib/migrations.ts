@@ -110,6 +110,25 @@ CREATE TABLE settings (
 );
 `,
   },
+  {
+    id: "002_m1_checks",
+    sql: `
+ALTER TABLE conditions
+  ADD COLUMN plain_words     TEXT,
+  ADD COLUMN status_note     TEXT,             -- e.g. "Upgraded from Reported: confirmed by an independent source"
+  ADD COLUMN last_checked_at TIMESTAMPTZ,
+  ADD COLUMN last_check      JSONB;            -- latest CheckResult (summary, sources, observations)
+
+ALTER TABLE evidence
+  ADD COLUMN passes  BOOLEAN NOT NULL DEFAULT true,  -- false = observed but no rule passed (needs review)
+  ADD COLUMN details JSONB;
+CREATE UNIQUE INDEX evidence_dedupe ON evidence(condition_id, url, content_hash);
+
+ALTER TABLE monitors
+  ADD COLUMN name TEXT,
+  ADD COLUMN role TEXT;                        -- what this monitor watches, e.g. "founder blog"
+`,
+  },
 ];
 
 const LOCK_KEY = 7_041_202_6; // arbitrary constant: one migrator at a time across instances
