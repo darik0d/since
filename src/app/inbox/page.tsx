@@ -13,14 +13,18 @@ export default async function Inbox() {
     query<InboundRow>("SELECT * FROM inbound_items WHERE status = 'pending' ORDER BY received_at DESC LIMIT 50"),
     query<InboundRow>("SELECT * FROM inbound_items WHERE status <> 'pending' ORDER BY received_at DESC LIMIT 15"),
   ]);
-  const sources = ["paste", granolaConfigured() ? "granola" : null].filter(Boolean).map((s) => SOURCE_LABEL[s!]).join(", ");
+  const sources = [
+    granolaConfigured() ? "meetings" : null,
+    process.env.INBOUND_EMAIL_BASIC && process.env.INVESTOR_EMAILS ? "emails" : null,
+    "notes",
+  ].filter(Boolean).join(", ").replace(/, ([^,]*)$/, " and $1");
   return (
     <>
       <LiveRefresh everyMs={8000} />
       <div className="page-head">
         <div>
           <h1>Inbox</h1>
-          <p>&ldquo;Not yet&rdquo;s Since found in your {sources.toLowerCase()}. Nothing is watched until you confirm it.</p>
+          <p>&ldquo;Not yet&rdquo;s Since found in your {sources}. Nothing is watched until you confirm it.</p>
         </div>
       </div>
 

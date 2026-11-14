@@ -8,7 +8,7 @@ import { esc, sendTelegram, telegramConfigured } from "./telegram";
 // Nothing starts watching automatically: a found item becomes PENDING and the investor confirms it.
 
 export type InboundSource = "paste" | "email" | "granola";
-export const SOURCE_LABEL: Record<string, string> = { paste: "Pasted", email: "Email", granola: "Meeting notes" };
+export const SOURCE_LABEL: Record<string, string> = { paste: "Note", email: "Email", granola: "Meeting notes" };
 
 export type Extracted = {
   found: boolean;
