@@ -7,7 +7,7 @@ import { SourceBadge } from "@/components/SourceBadge";
 import type { ConditionParams, DraftCondition, MarketSignal } from "@/lib/types";
 import type { ConditionPreview } from "@/lib/describe";
 
-type Card = DraftCondition & { preview: ConditionPreview; removed?: boolean };
+type Card = DraftCondition & { preview: ConditionPreview; removed?: boolean; open?: boolean };
 type Parsed = { domain: string; company: string; logo_url: string | null; conditions: Card[] };
 type Started = { startup_id: number; conditions: { id: number; status: Status; summary: string; monitors: { created: string[]; why?: string } }[] };
 
@@ -65,7 +65,7 @@ export function NewNotYet() {
           domain: parsed.domain,
           company: parsed.company,
           logo_url: parsed.logo_url,
-          conditions: parsed.conditions.filter((c) => !c.removed).map(({ preview, removed, ...c }) => c),
+          conditions: parsed.conditions.filter((c) => !c.removed).map(({ preview, removed, open, ...c }) => c),
         }),
       });
       const j = await r.json();
@@ -166,6 +166,17 @@ export function NewNotYet() {
                   <ParamFields c={c} set={(k, v) => setParam(i, k, v)} setReason={(v) => update(i, { reason: v })} />
 
                   {c.mechanism !== "ask_at_checkin" && (
+                    <button
+                      type="button"
+                      className="details-toggle"
+                      aria-expanded={Boolean(c.open)}
+                      onClick={() => update(i, { open: !c.open })}
+                    >
+                      <span className={`chev${c.open ? " chev-open" : ""}`}>›</span>
+                      How we verify
+                    </button>
+                  )}
+                  {c.mechanism !== "ask_at_checkin" && c.open && (
                     <>
                       <div className="kv"><span>How we verify</span>{c.preview.how}</div>
                       {c.preview.sources.length > 0 && (
