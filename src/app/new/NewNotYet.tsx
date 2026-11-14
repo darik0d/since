@@ -157,7 +157,6 @@ export function NewNotYet() {
                         <option key={k.value} value={k.value}>{k.label}</option>
                       ))}
                     </select>
-                    <StatusChip status={c.mechanism === "ask_at_checkin" ? "ask_at_checkin" : "watching"} />
                     <button className="link-btn" type="button" onClick={() => update(i, { removed: true })}>Remove</button>
                   </div>
                   <div className="quote">&ldquo;{c.original_words}&rdquo;</div>
