@@ -22,13 +22,20 @@ export async function POST(req: Request) {
   if (!domain || !drafts.length) return NextResponse.json({ error: "domain and at least one condition required" }, { status: 400 });
 
   const startup = await one<{ id: number }>(
-    `INSERT INTO startups (domain, name, logo_url, met_on, met_where, original_text)
-     VALUES ($1,$2,$3,$4,$5,$6)
+    `INSERT INTO startups (domain, name, logo_url, met_on, met_where, original_text, founder_name, founder_email)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      ON CONFLICT (domain) DO UPDATE SET name = EXCLUDED.name, logo_url = COALESCE(EXCLUDED.logo_url, startups.logo_url),
-       met_on = EXCLUDED.met_on, met_where = EXCLUDED.met_where, original_text = EXCLUDED.original_text
+       met_on = EXCLUDED.met_on, met_where = EXCLUDED.met_where, original_text = EXCLUDED.original_text,
+       founder_name = COALESCE(EXCLUDED.founder_name, startups.founder_name),
+       founder_email = COALESCE(EXCLUDED.founder_email, startups.founder_email)
      RETURNING id`,
-    [domain, b.company || null, b.logo_url || null, b.met_on || null, b.met_where || null, b.text || null],
+    [domain, b.company || null, b.logo_url || null, b.met_on || null, b.met_where || null, b.text || null,
+     b.founder_name?.trim() || null, b.founder_email?.trim() || null],
   );
+  // started from an inbox item: mark it accepted
+  if (Number(b.inbox_id)) {
+    await one("UPDATE inbound_items SET status = 'accepted', startup_id = $2 WHERE id = $1 RETURNING id", [Number(b.inbox_id), startup!.id]);
+  }
   const site = await discoverSite(domain);
 
   const results = await Promise.all(

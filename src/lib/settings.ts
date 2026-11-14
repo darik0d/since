@@ -7,6 +7,9 @@ export type Settings = {
   "telegram.enabled": boolean;
   "telegram.chat_id": string | null;
   "telegram.chat_title": string | null;
+  "investor.name": string | null; // email signature
+  "investor.fund": string | null;
+  "granola.last_sync": string | null; // ISO time of the last Granola sync
 };
 
 const DEFAULTS: Settings = {
@@ -15,6 +18,9 @@ const DEFAULTS: Settings = {
   "telegram.enabled": true,
   "telegram.chat_id": null,
   "telegram.chat_title": null,
+  "investor.name": "Anna K.",
+  "investor.fund": "Northstar Ventures",
+  "granola.last_sync": null,
 };
 
 export async function getSettings(): Promise<Settings> {

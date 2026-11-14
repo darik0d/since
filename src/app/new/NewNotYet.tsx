@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StatusChip, type Status } from "@/components/StatusChip";
 import { SourceBadge } from "@/components/SourceBadge";
 import type { ConditionParams, DraftCondition, MarketSignal } from "@/lib/types";
@@ -29,7 +29,25 @@ const SIGNALS: { key: MarketSignal; label: string }[] = [
 ];
 
 export function NewNotYet() {
-  const [form, setForm] = useState({ domain: "", met_on: new Date().toISOString().slice(0, 10), met_where: "", text: "" });
+  const [form, setForm] = useState({
+    domain: "", met_on: new Date().toISOString().slice(0, 10), met_where: "", text: "", founder_name: "", founder_email: "", inbox_id: "",
+  });
+  // prefill from the inbox ("Start watching" on an inbound item): /new?domain=&met_on=&met_where=&text=&founder_name=&founder_email=&inbox_id=
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const pick = (k: string) => q.get(k) ?? "";
+    if (![...q.keys()].length) return;
+    setForm((f) => ({
+      ...f,
+      domain: pick("domain") || f.domain,
+      met_on: pick("met_on") || f.met_on,
+      met_where: pick("met_where") || f.met_where,
+      text: pick("text") || f.text,
+      founder_name: pick("founder_name"),
+      founder_email: pick("founder_email"),
+      inbox_id: pick("inbox_id"),
+    }));
+  }, []);
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [started, setStarted] = useState<Started | null>(null);
   const [busy, setBusy] = useState<"" | "parse" | "start">("");
@@ -101,6 +119,16 @@ export function NewNotYet() {
           <label className="field">
             Where
             <input className="input" placeholder="Slush, Helsinki" value={form.met_where} onChange={(e) => setForm({ ...form, met_where: e.target.value })} />
+          </label>
+        </div>
+        <div className="grid-3">
+          <label className="field">
+            Founder (optional)
+            <input className="input" placeholder="Mikko Nordwind" value={form.founder_name} onChange={(e) => setForm({ ...form, founder_name: e.target.value })} />
+          </label>
+          <label className="field">
+            Founder email (optional)
+            <input className="input mono" type="email" placeholder="mikko@nordwind.io" value={form.founder_email} onChange={(e) => setForm({ ...form, founder_email: e.target.value })} />
           </label>
         </div>
         <label className="field">

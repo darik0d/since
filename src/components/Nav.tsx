@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const icons = {
   list: <path d="M4 6h16M4 12h16M4 18h10" />,
   plus: <path d="M12 5v14M5 12h14" />,
+  inbox: <path d="M4 13h4l2 3h4l2-3h4M5 5h14l2 8v6H3v-6z" />,
   bolt: <path d="M13 3 4 14h7l-1 7 9-11h-7z" />,
   gear: (
     <>
@@ -18,6 +19,7 @@ const icons = {
 const links: { href: string; label: string; icon: keyof typeof icons }[] = [
   { href: "/", label: "Watchlist", icon: "list" },
   { href: "/new", label: "New “not yet”", icon: "plus" },
+  { href: "/inbox", label: "Inbox", icon: "inbox" },
   { href: "/webhooks", label: "Webhook log", icon: "bolt" },
   { href: "/settings", label: "Notifications", icon: "gear" },
 ];

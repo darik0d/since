@@ -136,6 +136,49 @@ ALTER TABLE monitors
 ALTER TABLE startups ADD COLUMN display_domain TEXT;
 `,
   },
+  {
+    id: "004_reconnect",
+    sql: `
+ALTER TABLE startups ADD COLUMN founder_name TEXT;
+ALTER TABLE startups ADD COLUMN founder_email TEXT;
+CREATE TABLE reconnects (
+  id              SERIAL PRIMARY KEY,
+  startup_id      INTEGER NOT NULL REFERENCES startups(id) ON DELETE CASCADE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  to_email        TEXT,
+  subject         TEXT,
+  opener          TEXT,
+  ask             TEXT,
+  html            TEXT,
+  text            TEXT,
+  status          TEXT NOT NULL DEFAULT 'draft',   -- draft | sent
+  sent_at         TIMESTAMPTZ,
+  smtp_message_id TEXT
+);
+CREATE INDEX reconnects_startup ON reconnects (startup_id, created_at DESC);
+`,
+  },
+  {
+    id: "005_inbound",
+    sql: `
+-- Inbound "not yet"s from paste / email / Granola. Nothing starts watching automatically.
+CREATE TABLE inbound_items (
+  id             SERIAL PRIMARY KEY,
+  source         TEXT NOT NULL,                 -- paste | email | granola
+  external_id    TEXT NOT NULL,
+  received_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  sender         TEXT,
+  title          TEXT,
+  meeting_at     TIMESTAMPTZ,
+  raw_text       TEXT,
+  extracted_json JSONB,
+  status         TEXT NOT NULL DEFAULT 'pending', -- pending | accepted | dismissed | none
+  note           TEXT,
+  startup_id     INTEGER REFERENCES startups(id) ON DELETE SET NULL,
+  UNIQUE (source, external_id)
+);
+`,
+  },
 ];
 
 const LOCK_KEY = 7_041_202_6; // arbitrary constant: one migrator at a time across instances

@@ -15,6 +15,11 @@ export async function PATCH(req: Request) {
   const patch = (await req.json()) as Partial<Settings>;
   // "Confirmed" alerts are always on and not a setting; only these can change from the UI
   const allowed: (keyof Settings)[] = ["alerts.reported", "alerts.needs_review", "telegram.enabled"];
-  const clean = Object.fromEntries(Object.entries(patch).filter(([k, v]) => allowed.includes(k as keyof Settings) && typeof v === "boolean"));
+  const texts: (keyof Settings)[] = ["investor.name", "investor.fund"];
+  const clean = Object.fromEntries(
+    Object.entries(patch).filter(
+      ([k, v]) => (allowed.includes(k as keyof Settings) && typeof v === "boolean") || (texts.includes(k as keyof Settings) && typeof v === "string"),
+    ),
+  );
   return NextResponse.json({ settings: await setSettings(clean) });
 }
