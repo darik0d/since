@@ -24,7 +24,7 @@ const pageCache = new Map<string, { at: number; p: Promise<Page> }>();
 export function getPage(url: string, opts: { html?: boolean; fresh?: boolean } = {}): Promise<Page> {
   const key = `${url}|${opts.html ? "h" : "m"}`;
   const hit = pageCache.get(key) ?? (opts.html ? undefined : pageCache.get(`${url}|h`));
-  if (hit && Date.now() - hit.at < 90_000) return hit.p;
+  if (hit && Date.now() - hit.at < (opts.fresh ? 15_000 : 90_000)) return hit.p; // fresh: only share within one check run
   const p = fetchPage(url, opts).then((pg) => {
     if (!pg.ok) pageCache.delete(key); // don't cache failures
     return pg;

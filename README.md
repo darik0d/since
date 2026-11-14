@@ -25,7 +25,12 @@ npm run webhook:test        # signed fake webhook -> shows "verified" in /webhoo
    only → reported; ambiguous → needs_review. Revenue/retention are capped at reported. Press-release wires
    count as founder-controlled. Every piece of evidence is stored with its source type, snapshot time and rule.
 4. **Monitors** (`src/lib/monitors.ts`): Context.dev monitors are only triggers for step 2 (created when
-   `PUBLIC_BASE_URL` is https).
+   `PUBLIC_BASE_URL` is https). A verified `change.detected` webhook → `change_detected` + `webhook_received`
+   on the timeline → a fresh re-check (`src/lib/process-webhook.ts`) → status change → alert.
+5. **Customer's own site**: once a founder names a customer and links them, Since reads the customer's newsroom
+   (independent) and adds a monitor on it. The customer's own announcement upgrades Reported → Confirmed.
+6. **Alerts** (`src/lib/alerts.ts`): Telegram. Confirmed always; Reported on by default (labeled founder-reported);
+   Needs review off. Set `TELEGRAM_BOT_TOKEN`, open the bot, press Start, then Settings → Detect chat.
 
 ## Endpoints
 
@@ -34,6 +39,7 @@ npm run webhook:test        # signed fake webhook -> shows "verified" in /webhoo
 - `POST /api/conditions/:id/check`: "Check now": run the verifier once via Context.dev (no monitor), return evidence + status.
 - `POST /api/conditions/:id/recheck`: "Re-check now": check now + run-monitor-now for the condition's monitors.
 - `POST /api/evidence/:id/wrong`: "Mark as wrong" → status recomputed from the remaining evidence.
+- `GET/PATCH /api/settings`, `POST /api/settings/telegram/detect|test`: alert rules and the Telegram chat.
 - `POST /api/webhooks/context`: stores every raw delivery, checks `X-Context-Signature`
   (HMAC-SHA256 of `t.rawBody`, 5 min tolerance). Logs unverified ones too unless `WEBHOOK_ENFORCE_SIGNATURE=true`.
 - `GET  /api/webhooks/context`: last 50 events (JSON). UI: `/webhooks` (auto-refresh).

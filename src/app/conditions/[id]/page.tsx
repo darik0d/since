@@ -26,12 +26,20 @@ const TL_LABEL: Record<string, string> = {
   alert_sent: "Alert sent",
   recheck_requested: "Re-check requested",
   evidence_marked_wrong: "Evidence marked wrong",
+  customer_site_found: "Customer's own site found",
 };
 
 const ts = (s: string | null) => (s ? s.replace("T", " ").replace(/\.\d+Z$/, " UTC") : "—");
 
-export default async function ConditionPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ConditionPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ wrong?: string }>;
+}) {
   const id = Number((await params).id);
+  const wrongId = Number((await searchParams).wrong) || null;
   const c = await getCondition(id);
   if (!c) notFound();
   const [evidence, tl, monitors, startup] = await Promise.all([
@@ -90,7 +98,12 @@ export default async function ConditionPage({ params }: { params: Promise<{ id: 
 
           <h3 className="section-h">Evidence {passing.length ? `(${passing.length})` : ""}</h3>
           {passing.length === 0 && <div className="glass card muted">No qualifying evidence yet.</div>}
-          {passing.map((e) => <EvidenceCard key={e.id} e={e} />)}
+          {wrongId && passing.some((e) => e.id === wrongId) && (
+            <div className="glass banner" style={{ borderRadius: 16 }}>
+              Opened from an alert: is the highlighted evidence wrong? Use &ldquo;Mark as wrong&rdquo; on it and the status is recomputed.
+            </div>
+          )}
+          {passing.map((e) => <EvidenceCard key={e.id} e={e} highlight={e.id === wrongId} />)}
 
           {other.length > 0 && (
             <details className="glass card">
@@ -140,9 +153,9 @@ export default async function ConditionPage({ params }: { params: Promise<{ id: 
   );
 }
 
-function EvidenceCard({ e, compact }: { e: Ev; compact?: boolean }) {
+function EvidenceCard({ e, compact, highlight }: { e: Ev; compact?: boolean; highlight?: boolean }) {
   return (
-    <div className={compact ? "ev ev-compact" : "glass card ev"}>
+    <div className={compact ? "ev ev-compact" : `glass card ev${highlight ? " ev-highlight" : ""}`}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <SourceBadge type={e.source_type} />
         {e.rule_passed ? <span className="rule">✓ {e.rule_passed}</span> : <span className="muted">no rule passed</span>}
@@ -168,6 +181,11 @@ function TlDetail({ t }: { t: Tl }) {
   else if (t.kind === "baseline_captured") text = d.summary ?? "";
   else if (t.kind === "monitors_created") text = `${d.ids?.length ?? 0} Context.dev monitors`;
   else if (t.kind === "evidence_marked_wrong") text = `${d.from} → ${d.to}`;
+  else if (t.kind === "change_detected") text = `${d.monitor}${d.summary ? `: ${d.summary}` : ""}`;
+  else if (t.kind === "webhook_received") text = `${d.event} · ${d.id ?? ""}`;
+  else if (t.kind === "alert_sent") text = `${d.channel}, ${d.label}: ${d.ok ? "delivered" : `not delivered (${d.error})`}`;
+  else if (t.kind === "customer_site_found") text = `${d.name}: ${d.domain}`;
+  else if (t.kind === "recheck_requested") text = "Context.dev monitors queued";
   else text = typeof d === "string" ? d : "";
   return text ? <div style={{ fontSize: 12.5 }}>{text}</div> : null;
 }

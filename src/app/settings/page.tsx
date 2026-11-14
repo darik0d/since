@@ -1,31 +1,31 @@
+import { getSettings } from "@/lib/settings";
+import { botInfo, telegramConfigured } from "@/lib/telegram";
+import { query } from "@/lib/db";
+import { SettingsForm } from "./SettingsForm";
+
 export const dynamic = "force-dynamic";
 
-export default function Settings() {
-  const telegram = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
+export default async function Settings() {
+  const [s, bot, last] = await Promise.all([
+    getSettings(),
+    telegramConfigured() ? botInfo().catch(() => null) : Promise.resolve(null),
+    query<{ label: string; message: string; ok: boolean; error: string | null; sent_at: string }>(
+      "SELECT label, message, ok, error, sent_at FROM alerts ORDER BY id DESC LIMIT 1",
+    ),
+  ]);
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Notifications</h1>
-          <p>Where Since tells you a condition was met. Only working channels are shown.</p>
+          <p>Where Since tells you a condition was met. Only channels that work are shown.</p>
         </div>
       </div>
-      <div className="grid-2">
-        <div className="glass card">
-          <h2>Telegram</h2>
-          <p className="muted" style={{ margin: 0 }}>
-            {telegram ? "Bot configured." : "Not configured yet (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)."}
-          </p>
-        </div>
-        <div className="glass card">
-          <h2>Alert me when a condition becomes</h2>
-          <ul className="muted" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-            <li>Confirmed: always on</li>
-            <li>Reported (founder-reported): on</li>
-            <li>Needs review: off</li>
-          </ul>
-        </div>
-      </div>
+      <SettingsForm
+        initial={s}
+        telegram={{ configured: telegramConfigured(), bot: bot?.username ?? null }}
+        lastAlert={last[0] ?? null}
+      />
     </>
   );
 }

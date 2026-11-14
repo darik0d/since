@@ -145,6 +145,54 @@ export async function checkAnnouncement(ctx: CheckContext): Promise<CheckResult>
     });
   }
 
+  // Customer's own site: once a customer is named, read THEIR newsroom. Their own announcement that
+  // they chose the startup is independent of the founder.
+  let customerConfirmed: string | null = null;
+  if (subtype === "customer") {
+    const named = new Map<string, string>();
+    for (const e of evidence) {
+      const n = claimOf(e).customer_name;
+      if (n && !named.has(norm(n))) named.set(norm(n), n);
+    }
+    const sites = await findCustomerSites(ctx, [...named.values()].slice(0, 2), evidence, byId, pages);
+    obs.customer_sites = sites;
+    for (const cs of sites) {
+      const csite = await discoverSite(cs.domain, { fresh: ctx.fresh });
+      const urls = csite.blog.length ? csite.blog.slice(0, 2) : [csite.home.url];
+      const cpages = await Promise.all(urls.map((u) => getPage(u, { fresh: ctx.fresh })));
+      for (const pg of cpages) sources.push({ url: pg.url, source_type: "independent", ok: pg.ok, note: pg.ok ? `${cs.name}'s own site` : "failed" });
+      const csn: Snippet[] = [];
+      for (const pg of cpages.filter((x) => x.ok)) {
+        paragraphs(pg.markdown)
+          .filter((t) => companyRe.test(t) && kw.test(t))
+          .slice(0, 15)
+          .forEach((t, i) => csn.push({ id: `c${csn.length}_${i}`, url: pg.url, source_type: "independent", text: t, snapshot_time: pg.snapshot_time }));
+      }
+      if (!csn.length) continue;
+      const cById = new Map(csn.map((s) => [s.id, s]));
+      for (const c of await extractClaims(ctx.company, "customer", csn)) {
+        const sn = cById.get(c.snippet_id);
+        if (!sn || c.kind !== "customer" || !c.customer_name || !c.quote || !norm(sn.text).includes(norm(c.quote))) continue;
+        if (!sameName(c.customer_name, cs.name)) continue; // must be this customer speaking about the startup
+        const enterpriseKnown =
+          c.customer_is_enterprise === true || evidence.some((e) => sameName(claimOf(e).customer_name, cs.name) && claimOf(e).customer_is_enterprise === true);
+        const ok = (p.customer_kind ?? "any") !== "enterprise" || enterpriseKnown;
+        if (!ok) ambiguous++;
+        evidence.push({
+          url: sn.url,
+          source_type: "independent",
+          excerpt: c.quote.slice(0, 400),
+          snapshot_time: sn.snapshot_time,
+          content_hash: sha256(`${sn.url}:${norm(c.quote)}`),
+          rule_passed: ok ? `${cs.name}'s own newsroom confirms it chose ${ctx.company}` : null,
+          passes: ok,
+          details: { claim: c, customer_site: cs.domain },
+        });
+        if (ok) customerConfirmed = cs.name;
+      }
+    }
+  }
+
   let passing = evidence.filter((e) => e.passes);
   if (subtype === "customer") {
     // need >= min_customers distinct named customers
@@ -163,9 +211,60 @@ export async function checkAnnouncement(ctx: CheckContext): Promise<CheckResult>
       : status === "needs_review"
         ? `Found ${subtype} mentions that need a human look`
         : subtype === "customer"
-          ? `${first?.claim.customer_name} named as customer (${passing.some((e) => e.source_type === "independent") ? "independent source" : "founder channel"})`
+          ? customerConfirmed && status === "confirmed"
+            ? `${customerConfirmed} confirmed it on its own newsroom`
+            : `${first?.claim.customer_name} named as customer (${passing.some((e) => e.source_type === "independent") ? "independent source" : "founder channel"})`
           : `${first?.claim.metric ?? subtype} ${first?.claim.amount ?? ""} ${first?.claim.currency ?? ""} reported`;
-  return { status, summary, evidence, sources, observations: obs };
+  const note = customerConfirmed && status === "confirmed" ? `Confirmed by the customer: ${customerConfirmed}'s own newsroom` : undefined;
+  return { status, summary, evidence, sources, observations: obs, note };
+}
+
+const claimOf = (e: EvidenceCandidate) => (e.details as { claim: Claim }).claim;
+const sameName = (a: string | null | undefined, b: string) => {
+  if (!a) return false;
+  const x = norm(a), y = norm(b);
+  return x.includes(y) || y.includes(x);
+};
+
+const SOCIAL = /(linkedin|twitter|x\.com|facebook|instagram|youtube|github|medium)\./i;
+const MD_LINK = /\[([^\]]{2,200})\]\((https?:\/\/[^)\s]+)\)/g;
+
+/**
+ * Where does the named customer live on the web? Deterministic: a link with the customer's name on
+ * the founder's own post (founders link their customers), or a site the investor already confirmed.
+ */
+async function findCustomerSites(
+  ctx: CheckContext,
+  names: string[],
+  evidence: EvidenceCandidate[],
+  snippets: Map<string, Snippet>,
+  pages: Page[],
+): Promise<{ name: string; domain: string; url: string; found_on: string }[]> {
+  const out: { name: string; domain: string; url: string; found_on: string }[] = [];
+  for (const s of ctx.params.customer_sites ?? []) out.push({ ...s, url: `https://${s.domain}`, found_on: "saved" });
+  const want = names.filter((n) => !out.some((o) => sameName(o.name, n)));
+  if (!want.length) return out;
+
+  // pages to search: founder index pages + their posts whose link text names the customer
+  // ("Welcome Kallio Logistics, our first enterprise customer" -> /blog/welcome-kallio-logistics)
+  const postUrls = new Set<string>();
+  for (const pg of pages.filter((x) => x.ok)) {
+    for (const m of pg.markdown.matchAll(MD_LINK)) {
+      if (sameSite(m[2], ctx.domain) && want.some((n) => norm(m[1]).includes(norm(n)))) postUrls.add(m[2]);
+    }
+  }
+  void evidence;
+  void snippets;
+  const posts = await Promise.all([...postUrls].slice(0, 3).map((u) => getPage(u, { fresh: ctx.fresh })));
+  for (const pg of [...posts, ...pages].filter((x) => x.ok)) {
+    for (const m of pg.markdown.matchAll(MD_LINK)) {
+      const [, text, href] = m;
+      const name = want.find((n) => sameName(text, n) && norm(text).length <= norm(n).length + 20);
+      if (!name || sameSite(href, ctx.domain) || SOCIAL.test(hostOf(href)) || out.some((o) => sameName(o.name, name))) continue;
+      out.push({ name, domain: hostOf(href), url: href, found_on: pg.url });
+    }
+  }
+  return out;
 }
 
 function applyRule(subtype: string, c: Claim, p: CheckContext["params"]): string | "ambiguous" | false {

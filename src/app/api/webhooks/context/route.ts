@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { one, query } from "@/lib/db";
+import { findKey, processWebhook } from "@/lib/process-webhook";
 import { verifyContextSignature } from "@/lib/webhook";
 
 export const runtime = "nodejs";
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
   } catch {}
 
   const monitorId: string | null =
-    parsed?.data?.run?.monitor_id ?? parsed?.data?.change?.monitor_id ?? parsed?.data?.monitor_id ?? null;
+    parsed?.data?.run?.monitor_id ?? parsed?.data?.change?.monitor_id ?? parsed?.data?.monitor_id ?? (findKey(parsed, "monitor_id") as string | undefined) ?? null;
 
   const secrets: string[] = [];
   if (monitorId) {
@@ -60,6 +61,8 @@ export async function POST(req: Request) {
   if (!sig.ok && process.env.WEBHOOK_ENFORCE_SIGNATURE === "true") {
     return NextResponse.json({ ok: false, error: sig.note, logged }, { status: 401 });
   }
+  // answer now (Context.dev wants a 2xx within 15 s), re-verify right after the response
+  if (logged) after(() => processWebhook(logged).catch((e) => console.error("[since] webhook processing", e)));
   return NextResponse.json({ ok: true, logged, signature: sig.note });
 }
 

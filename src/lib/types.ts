@@ -27,6 +27,8 @@ export type ConditionParams = {
   metric?: string | null; // ARR | MRR | revenue | NRR | GRR | retention
   threshold?: number | null; // 1000000 or 120 (percent)
   threshold_currency?: string | null;
+  // set by Since once a named customer's own site is found (not by the LLM)
+  customer_sites?: { name: string; domain: string }[];
 };
 
 export type DraftCondition = {
@@ -57,6 +59,7 @@ export type CheckResult = {
   evidence: EvidenceCandidate[];
   sources: SourceChecked[];
   observations: Record<string, unknown>;
+  note?: string; // shown as the status note on an upgrade, e.g. "Confirmed by the customer"
 };
 
 export type CheckContext = {

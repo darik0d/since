@@ -1,6 +1,9 @@
 import { one, pool, query } from "./db";
 import { runCheck } from "./verify";
 import { statusFrom } from "./verify/status";
+import { maybeAlert } from "./alerts";
+import { createMonitors } from "./monitors";
+import { discoverSite } from "./sources";
 import type { CheckResult, ConditionParams, Mechanism, Status, Subtype } from "./types";
 
 export type ConditionRow = {
@@ -50,8 +53,20 @@ export function nextStatus(current: Status, found: CheckResult["status"]): Statu
   return RANK[found] > RANK[current] ? found : current;
 }
 
-/** Run the verifier for one condition, store evidence + timeline, move the status. */
-export async function checkCondition(id: number, opts: { fresh?: boolean; trigger?: string; rawWebhookId?: number } = {}) {
+// One check per condition at a time (a webhook and "Re-check now" can arrive together).
+const running = new Map<number, Promise<unknown>>();
+type CheckOpts = { fresh?: boolean; trigger?: string; rawWebhookId?: number };
+
+/** Run the verifier for one condition, store evidence + timeline, move the status, alert on change. */
+export function checkCondition(id: number, opts: CheckOpts = {}) {
+  const prev = running.get(id) ?? Promise.resolve();
+  const next = prev.catch(() => {}).then(() => checkConditionNow(id, opts));
+  running.set(id, next);
+  next.finally(() => running.get(id) === next && running.delete(id)).catch(() => {});
+  return next;
+}
+
+async function checkConditionNow(id: number, opts: CheckOpts) {
   const c = await getCondition(id);
   if (!c) throw new Error(`condition ${id} not found`);
   if (c.status === "ask_at_checkin") return { condition: c, result: null, changed: false };
@@ -106,8 +121,10 @@ export async function checkCondition(id: number, opts: { fresh?: boolean; trigge
     changed = status !== c.status;
     const note = changed
       ? c.status === "reported" && status === "confirmed"
-        ? "Upgraded from Reported: an independent or platform source now confirms it"
-        : null
+        ? `Upgraded from Reported: ${effective.note ?? "an independent or platform source now confirms it"}`
+        : status === "confirmed"
+          ? effective.note ?? null
+          : null
       : c.status_note;
     await client.query(
       `UPDATE conditions SET status = $2, status_note = $3, last_checked_at = now(), last_check = $4,
@@ -137,7 +154,44 @@ export async function checkCondition(id: number, opts: { fresh?: boolean; trigge
   } finally {
     client.release();
   }
+
+  // a newly named customer's own site: remember it and watch its newsroom (independent source)
+  await rememberCustomerSites(c, result).catch((e) => console.error("[since] customer site", e));
+
+  // alerts on every status change except the baseline (the investor just set it up)
+  if (changed && opts.trigger !== "baseline") {
+    const fresh = await getCondition(id);
+    await maybeAlert(id, c.status, status, fresh?.status_note ?? null).catch((e) => console.error("[since] alert", e));
+  }
   return { condition: { ...c, status }, result, changed };
+}
+
+async function rememberCustomerSites(c: ConditionRow, result: CheckResult) {
+  const found = (result.observations.customer_sites as { name: string; domain: string; url: string; found_on: string }[] | undefined) ?? [];
+  const known = c.params_json.customer_sites ?? [];
+  const fresh = found.filter((f) => f.found_on !== "saved" && !known.some((k) => k.domain === f.domain));
+  if (!fresh.length) return;
+  const sites = [...known, ...fresh.map(({ name, domain }) => ({ name, domain }))];
+  await query("UPDATE conditions SET params_json = params_json || $2::jsonb WHERE id = $1", [c.id, JSON.stringify({ customer_sites: sites })]);
+  for (const f of fresh) {
+    await timeline(c.id, "customer_site_found", { name: f.name, domain: f.domain, found_on: f.found_on });
+    const site = await discoverSite(f.domain);
+    const newsroom = site.blog[0] ?? `https://${f.domain}`;
+    const r = await createMonitors(c.id, c.domain, [
+      {
+        role: `${f.name}'s newsroom (customer's own site)`,
+        source_type: "independent",
+        priority: "core",
+        input: {
+          name: `since ${c.domain} · ${f.name} newsroom`.slice(0, 120),
+          target: { type: "page", url: newsroom, instructions: `Report new press releases, especially any mentioning ${c.company}.` },
+          change_detection: { type: "exact" },
+          tags: ["since", `since:${c.domain}`],
+        },
+      },
+    ]);
+    if (r.created.length) await timeline(c.id, "monitors_created", { ids: r.created, role: `${f.name} newsroom` });
+  }
 }
 
 /** "Mark as wrong": exclude that evidence and recompute the status from what is left. */
