@@ -27,6 +27,7 @@ export default async function Settings() {
         initial={s}
         telegram={{ configured: telegramConfigured(), bot: bot?.username ?? null }}
         granola={granolaConfigured() ? { folder: Boolean(granolaFolder()), last_sync: s["granola.last_sync"] ? fmtTime(s["granola.last_sync"], { alwaysDate: true }) : null } : null}
+        inboundEmail={process.env.INBOUND_EMAIL_BASIC && process.env.INVESTOR_EMAILS ? process.env.INBOUND_EMAIL_ADDRESS ?? null : null}
         lastAlert={last[0] ? { ...last[0], sent_at: fmtTime(last[0].sent_at, { alwaysDate: true }) } : null}
       />
     </>

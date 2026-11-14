@@ -9,9 +9,10 @@ type Props = {
   telegram: { configured: boolean; bot: string | null };
   lastAlert: { label: string; message: string; ok: boolean; error: string | null; sent_at: string } | null;
   granola: { folder: boolean; last_sync: string | null } | null;
+  inboundEmail: string | null;
 };
 
-export function SettingsForm({ initial, telegram, lastAlert, granola }: Props) {
+export function SettingsForm({ initial, telegram, lastAlert, granola, inboundEmail }: Props) {
   const [s, setS] = useState(initial);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState("");
@@ -108,6 +109,7 @@ export function SettingsForm({ initial, telegram, lastAlert, granola }: Props) {
       </div>
 
       {granola && <GranolaCard folder={granola.folder} initialLastSync={granola.last_sync} />}
+      {inboundEmail && <InboundEmailCard address={inboundEmail} />}
 
       {lastAlert && (
         <div className="glass card" style={{ gridColumn: "1 / -1", display: "grid", gap: 8 }}>
@@ -180,6 +182,20 @@ function GranolaCard({ folder, initialLastSync }: { folder: boolean; initialLast
         <span className="muted mono" style={{ fontSize: 12 }}>last sync: {lastSync ?? "never"}</span>
       </div>
       {msg && <div className="muted" style={{ fontSize: 13 }}>{msg}</div>}
+    </div>
+  );
+}
+
+function InboundEmailCard({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="glass card" style={{ display: "grid", gap: 10 }}>
+      <h2 style={{ margin: 0 }}>Email in</h2>
+      <p className="muted" style={{ margin: 0 }}>Forward or BCC your pass emails here. They land in the Inbox as pending; nothing starts watching until you confirm.</p>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+        <span className="mono ellipsis" style={{ flex: 1 }}>{address}</span>
+        <button className="btn btn-sm" onClick={() => navigator.clipboard.writeText(address).then(() => setCopied(true))}>{copied ? "Copied" : "Copy"}</button>
+      </div>
     </div>
   );
 }
