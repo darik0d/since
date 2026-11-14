@@ -81,7 +81,16 @@ export async function mapConditions(text: string, company: string, domain: strin
     system: SYSTEM,
     user: `Startup: ${company} (${domain})\nInvestor's note:\n"""${text}"""`,
   });
-  return out.conditions.map(normalize);
+  return out.conditions.map(normalize).map(defaultSignals);
+}
+
+// Currencies shared by many countries say nothing about one market: prices in EUR don't show a
+// Finnish startup sells in Germany. Off by default for these; the investor can tick it back on.
+const SHARED_CURRENCIES = new Set(["EUR", "USD"]);
+function defaultSignals(c: DraftCondition): DraftCondition {
+  if (c.mechanism !== "market_launch" || !SHARED_CURRENCIES.has(c.params.currency ?? "")) return c;
+  const accept = (c.params.accept ?? []).filter((s) => s !== "currency");
+  return { ...c, params: { ...c.params, accept: accept.length ? accept : ["language", "country_listed", "country_domain"] } };
 }
 
 const ALL_SIGNALS: MarketSignal[] = ["language", "currency", "country_listed", "country_domain"];

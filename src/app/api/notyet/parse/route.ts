@@ -17,7 +17,8 @@ export async function POST(req: Request) {
   if (!domain.includes(".") || !text) return NextResponse.json({ error: "domain and text are required" }, { status: 400 });
 
   try {
-    const [brand, site] = await Promise.all([brandFor(domain), discoverSite(domain)]);
+    const sitePromise = discoverSite(domain);
+    const [brand, site] = await Promise.all([brandFor(domain, sitePromise.then((s) => s.home.title)), sitePromise]);
     const conditions = await mapConditions(text, brand.name, domain);
     return NextResponse.json({
       domain,
