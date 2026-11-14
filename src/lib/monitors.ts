@@ -134,9 +134,16 @@ export async function createMonitors(conditionId: number, domain: string, planne
   for (const m of planned) {
     if (m.priority === "extra" && !roomy) continue;
     if (free <= 0) break;
+    // Context.dev: page-target instructions need semantic detection. Founder pages use exact detection
+    // (any change -> Since re-checks with its own rules), so instructions are dropped there.
+    const target =
+      m.input.target.type === "page" && m.input.change_detection?.type !== "semantic"
+        ? (({ instructions: _drop, ...t }) => t)(m.input.target)
+        : m.input.target;
     try {
       const mon = await context.createMonitor({
         ...m.input,
+        target,
         schedule: { type: "interval", frequency: demo ? 10 : 30, unit: "minutes" },
         webhook: { url: `${publicBase()}/api/webhooks/context`, events: ["change.detected"], retry: {} },
       });
@@ -152,5 +159,6 @@ export async function createMonitors(conditionId: number, domain: string, planne
     }
   }
   const skipped = planned.length - created.length;
+  if (errors.length) console.error("[since] monitor create:", errors.join("; "));
   return { created, skipped, why: errors.length ? errors.join("; ") : skipped ? `monitor budget: ${lim.monitors_used}/${lim.monitors_limit} used` : undefined };
 }
