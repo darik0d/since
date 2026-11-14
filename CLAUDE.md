@@ -120,7 +120,8 @@ Needs review (orange outline), Ask at check-in (blue-gray), Expired (light gray,
   Kallio Logistics site with a newsroom (kallio.fi-style). Label both fictional in the demo.
 - These test projects live OUTSIDE this repo, in sibling folders next to since/:
   ../nordwind and ../kallio. Never create them inside since/. Build them only after the
-  platform core works (see milestones). Serve them as static sites from the Vultr server (Caddy).
+  platform core works (see milestones). Serve them as static sites (separate small nginx
+  containers on Aiven Runtime, or the fallback server).
 - Live beat 1: Nordwind blog posts "Welcome Kallio Logistics, our first enterprise customer"
   -> Re-check now -> status Reported -> alert labeled "founder-reported".
 - Live beat 2: Kallio newsroom posts "Kallio selects Nordwind" -> Re-check now
@@ -129,20 +130,39 @@ Needs review (orange outline), Ask at check-in (blue-gray), Expired (light gray,
 - Monitor budget: ~6 for Nordwind/Kallio; 20-30 real startups overnight once the higher limit is active.
 
 ## Architecture
-- One service + SQLite, one Docker container. Suggested: Next.js (API routes) + SQLite.
+- One Next.js service in one Docker container.
+- Database: Aiven PostgreSQL (DATABASE_URL from env). Migrate off SQLite/better-sqlite3 NOW:
+  Aiven Runtime containers are stateless, and Postgres is what makes the Aiven entry meaningful
+  (evidence ledger, raw webhook log, status history/timeline).
 - POST /api/webhooks/context: verify secret, store raw event, re-verify, update status, send alerts.
 - POST /api/conditions/:id/recheck: calls run-monitor-now for that condition's monitors.
-- Deploy: Vultr Ubuntu VM (EU), Docker Compose, Caddy auto-HTTPS on <ip>.sslip.io,
-  restart: unless-stopped, secrets only in .env (never commit .env).
+- Deploy (decided 09:30): Aiven Runtime + Aiven PostgreSQL. Vultr is OUT.
+  - Aiven Runtime builds and deploys from the GitHub repo using our Dockerfile; public endpoint is
+    always HTTPS on 443 (*.aiven.app), Aiven terminates TLS -> no Caddy needed there.
+    Redeploy = "Deploy latest commit". Runtime may need access approval: ask at the Aiven booth.
+  - Fallback if Runtime access is not granted quickly: Verda CPU instance (free at Junction) with our
+    existing Docker Compose + Caddy plan, still using Aiven PostgreSQL.
+  - Until deployed: develop locally, use a tunnel for Context.dev webhooks.
+  - Secrets only in .env / Aiven env vars (never commit .env).
+
+## Prize entries (one project, several entries)
+- Main: Context.dev "The Web Is Your Real-Time Database".
+- Tech challenge "Best Use of Context.dev: Fully Structured Web" (EUR 750 / 250 / swag): Context.dev must be
+  in the core flow and visibly drive the demo. Submit: GitHub repo + demo + a short note on which
+  Context.dev endpoints we used and why. Keep a running list in README.md.
+- Tech challenge "Best Use of Aiven" (EUR 1000 / 750 / 500): Aiven PostgreSQL + Aiven Runtime as a
+  meaningful part of the solution.
+- Cala "Make Unicorns Real": decide after the 11:00 workshop.
+- The repo must live on GitHub (Runtime deploys from it; submissions need it).
 
 ## Milestones (Saturday, subject to change)
-- M0 07:50-09:50 (home): scaffold the Since app, Context.dev API tests, Vultr up with an HTTPS webhook logger.
+- M0 07:50-09:50 (home): scaffold the Since app, Context.dev API tests, HTTPS webhook logger (local + tunnel until hosting is decided).
   No test projects yet.
 - M1 12:00-15:00 core: data model, condition mapping (LLM) + confirm step, verifiers for the
   4 mechanisms (announcement + market_launch first), evidence store.
   Done when: checks on 3 real startups are correct.
 - M1.5 ~15:00 (30 min max): test projects in ../nordwind and ../kallio (plain static HTML:
-  Nordwind home/blog/pricing/careers, Kallio newsroom), deployed as static sites on Vultr.
+  Nordwind home/blog/pricing/careers, Kallio newsroom), deployed as static sites on the deploy server.
 - M2 15:00-18:00 real-time loop: monitors -> webhook -> re-verify -> status -> Telegram -> timeline.
   Done when: live beat 1 and 2 work end to end. Start real-startup monitors by 18:00.
 - M3 18:30-21:00 UI: the 4 screens (Settings can be minimal), Slack/email if time.
