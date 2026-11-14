@@ -64,9 +64,10 @@ condition created -> baseline captured -> change detected -> webhook received
 
 ## Context.dev facts (checked 2026-11-14)
 - Account: ~51,000 credits (hackathon grant, confirmed via get-usage at 08:19).
-  Monitor limit: up to 500 concurrent promised, but get-monitor-limits still reported
-  10 (plan "free") at 08:19. Re-check get-monitor-limits before creating more than 10.
+  Monitor limit: 5000 (get-monitor-limits at 18:00: 10 used, limit 5000, plan "free").
 - Monitor schedule minimum interval: 10 minutes. Use 10 min for demo-critical monitors, 30 min for the rest.
+- IMPORTANT: web-scrape serves cached pages by default (maxAgeMs default 259200000 = 3 days).
+  Verifiers and "Check now" MUST pass maxAgeMs: 0 to fetch fresh, or the live demo shows stale pages.
 - run-monitor-now queues an immediate check and fires the webhook if a change is found.
   Use it for the live demo and for the "Re-check now" button.
 - Monitor target types:
@@ -99,7 +100,7 @@ condition created -> baseline captured -> change detected -> webhook received
 
 ## UI (4 screens; layout drafted in Google Stitch)
 Style: calm, data-dense (Linear/Attio-like), light theme, one accent (deep indigo), Inter,
-monospace for timestamps/URLs. Status chips: Watching (gray), Reported (amber), Confirmed (green),
+monospace for timestamps/URLs. Status chips: NO chip for watching (default state; at most a muted "checked 4 min ago"). Reported (amber), Confirmed (green),
 Needs review (orange outline), Ask at check-in (blue-gray), Expired (light gray, strikethrough).
 1. Watchlist: startups said "not yet" to; columns: logo+name+domain (logo via Context.dev brand data),
    said-not-yet date+place, condition chips, latest change, last checked. Banner "N conditions met this week".
@@ -122,6 +123,9 @@ Needs review (orange outline), Ask at check-in (blue-gray), Expired (light gray,
   ../nordwind and ../kallio. Never create them inside since/. Build them only after the
   platform core works (see milestones). Serve them as static sites (separate small nginx
   containers on Aiven Runtime, or the fallback server).
+- Demo sites are one tiny Node app deployed twice (SITE=nordwind|kallio) as separate Aiven Runtime
+  apps. Content is toggled instantly via POST /admin/publish?item=<id> (X-Admin-Token), reset via
+  POST /admin/reset. Source types: nordwind host = founder_controlled, kallio host = independent.
 - Live beat 1: Nordwind blog posts "Welcome Kallio Logistics, our first enterprise customer"
   -> Re-check now -> status Reported -> alert labeled "founder-reported".
 - Live beat 2: Kallio newsroom posts "Kallio selects Nordwind" -> Re-check now
@@ -147,6 +151,14 @@ Needs review (orange outline), Ask at check-in (blue-gray), Expired (light gray,
   - Until deployed: develop locally, use a tunnel for Context.dev webhooks.
   - Secrets only in .env / Aiven env vars (never commit .env).
 
+## Dev vs prod data
+- Local dev uses the local since_dev Postgres. Production uses Aiven PostgreSQL. Never point local
+  at the Aiven DB, never run migrations against it from a laptop.
+- Context.dev monitors are created ONLY by the deployed app (their webhooks go to PUBLIC_BASE_URL).
+  Locally, use "Check now" (one-off scrape, no monitor). Monitor limit is 10 for now.
+- `npm run seed` (idempotent) loads the demo story into any DB, so local is never empty and the
+  demo state can be reset before judging.
+
 ## Prize entries (one project, several entries)
 - Main: Context.dev "The Web Is Your Real-Time Database".
 - Tech challenge "Best Use of Context.dev: Fully Structured Web" (EUR 750 / 250 / swag): Context.dev must be
@@ -154,7 +166,8 @@ Needs review (orange outline), Ask at check-in (blue-gray), Expired (light gray,
   Context.dev endpoints we used and why. Keep a running list in README.md.
 - Tech challenge "Best Use of Aiven" (EUR 1000 / 750 / 500): Aiven PostgreSQL + Aiven Runtime as a
   meaningful part of the solution.
-- Cala "Make Unicorns Real": decide after the 11:00 workshop.
+- Cala "Make Unicorns Real": entering. Cala data verifies funding_round/team_size conditions and
+  feeds the "Since you passed" block of the reconnect email (see M4.md).
 - The repo must live on GitHub (Runtime deploys from it; submissions need it).
 
 ## Milestones (Saturday, subject to change)
@@ -168,4 +181,6 @@ Needs review (orange outline), Ask at check-in (blue-gray), Expired (light gray,
 - M2 15:00-18:00 real-time loop: monitors -> webhook -> re-verify -> status -> Telegram -> timeline.
   Done when: live beat 1 and 2 work end to end. Start real-startup monitors by 18:00.
 - M3 18:30-21:00 UI: the 4 screens (Settings can be minimal), Slack/email if time.
+- M4 18:00-21:00 (approved by the user, overrides the frozen scope for these items): see M4.md.
+  Reconnect email (Telegram + web), Cala data, inbound "not yet" inbox (paste, email, Granola).
 - 21:00 feature freeze + deploy. 22:30 demo video v1 + deck v1 + submit.
