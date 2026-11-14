@@ -18,7 +18,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="shell">
           <aside className="glass sidebar">
             <div className="brand">
-              <div className="brand-mark">S</div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.png" alt="Since" width={32} height={32} className="brand-logo" />
               <div>
                 <div className="brand-name">Since</div>
                 <div className="brand-sub">Your &ldquo;not yet&rdquo;, watched</div>
