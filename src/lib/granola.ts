@@ -17,7 +17,7 @@ type Note = {
   created_at: string;
   owner?: { name?: string; email?: string };
   web_url?: string;
-  calendar_event?: { event_title?: string; scheduled_start_time?: string; invitees?: { email: string }[] } | null;
+  calendar_event?: { event_title?: string; scheduled_start_time?: string; organiser?: string | null; invitees?: { email: string; name?: string }[] } | null;
   attendees?: { name?: string; email?: string }[];
   folder_membership?: { id: string; name: string }[];
   summary_text?: string | null;
@@ -74,6 +74,42 @@ async function getNote(id: string): Promise<Note> {
   }
 }
 
+// Personal mailboxes say nothing about which company someone is from.
+const PERSONAL = new Set(["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "icloud.com", "me.com", "yahoo.com", "proton.me", "protonmail.com", "hey.com", "aol.com", "gmx.com", "gmx.de", "web.de"]);
+const domainOf = (e: string) => e.toLowerCase().split("@")[1] ?? "";
+const nameFromDomain = (d: string) => d.split(".")[0].replace(/^./, (c) => c.toUpperCase());
+
+/**
+ * Who was the meeting with? The first attendee/invitee outside the investor's own domain(s).
+ * e.g. a meeting with bryan@nordwind.io -> startup nordwind.io, founder bryan@nordwind.io. Deterministic, not LLM.
+ */
+export function meetingCounterpart(n: Note) {
+  const own = new Set(
+    [n.owner?.email, ...(process.env.INVESTOR_EMAILS ?? "").split(",")]
+      .map((e) => (e ?? "").trim().toLowerCase())
+      .filter(Boolean)
+      .map(domainOf)
+      .filter((d) => d && !PERSONAL.has(d)),
+  );
+  const ownEmails = new Set([n.owner?.email, ...(process.env.INVESTOR_EMAILS ?? "").split(",")].map((e) => (e ?? "").trim().toLowerCase()).filter(Boolean));
+  const people = [
+    ...(n.attendees ?? []),
+    ...(n.calendar_event?.invitees ?? []),
+    ...(n.calendar_event?.organiser ? [{ email: n.calendar_event.organiser }] : []),
+  ].filter((p): p is { email: string; name?: string } => Boolean(p?.email));
+  const external = people.filter((p) => !ownEmails.has(p.email.toLowerCase()) && !own.has(domainOf(p.email)));
+  const company = external.find((p) => !PERSONAL.has(domainOf(p.email)));
+  const who = company ?? external[0];
+  if (!who) return null;
+  const d = company ? domainOf(company.email) : null;
+  return {
+    startup_domain: d,
+    startup_name: d ? nameFromDomain(d) : null,
+    founder_email: who.email.toLowerCase(),
+    founder_name: who.name?.trim() || null,
+  };
+}
+
 function noteText(n: Note): string {
   const who = (t: TranscriptItem) =>
     t.speaker?.name ?? (t.speaker?.attribution === "me" || t.speaker?.source === "microphone" ? "Investor (me)" : "Them");
@@ -81,6 +117,7 @@ function noteText(n: Note): string {
   return [
     n.title ? `Meeting: ${n.title}` : "",
     n.attendees?.length ? `Attendees: ${n.attendees.map((a) => [a.name, a.email && `<${a.email}>`].filter(Boolean).join(" ")).join(", ")}` : "",
+    n.calendar_event?.invitees?.length ? `Invitees: ${n.calendar_event.invitees.map((a) => a.email).join(", ")}` : "",
     "",
     "Summary:",
     n.summary_markdown || n.summary_text || "",
@@ -126,6 +163,7 @@ async function doSync(): Promise<GranolaSyncResult> {
           title: n.title ?? n.calendar_event?.event_title ?? "Granola meeting",
           meeting_at: n.calendar_event?.scheduled_start_time ?? n.created_at,
           raw_text: noteText(n),
+          known: meetingCounterpart(n),
         });
         if (r.created) newItems++;
         if (r.created && r.status === "pending") pending++;

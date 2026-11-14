@@ -174,7 +174,7 @@ function GranolaCard({ folder, initialLastSync }: { folder: boolean; initialLast
     <div className="glass card" style={{ display: "grid", gap: 12 }}>
       <h2 style={{ margin: 0 }}>Granola meeting notes</h2>
       <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-        Since reads new meeting notes every 10 minutes and puts any &ldquo;not yet&rdquo; you gave into the Inbox.{" "}
+        Since reads new meeting notes every 2 minutes, recognises the startup from the meeting's attendees (e.g. bryan@nordwind.io → nordwind.io) and puts any &ldquo;not yet&rdquo; you gave into the Inbox.{" "}
         {folder ? "Only meetings in your Since folder in Granola are read." : "All your Granola meetings are read (set a Since folder to limit this)."}
       </p>
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>

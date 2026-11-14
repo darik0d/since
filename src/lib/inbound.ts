@@ -94,6 +94,8 @@ export type IngestInput = {
   title?: string | null;
   meeting_at?: string | null;
   raw_text: string;
+  /** Facts known from metadata (e.g. the meeting's external attendee): they override the LLM. */
+  known?: { startup_domain?: string | null; startup_name?: string | null; founder_name?: string | null; founder_email?: string | null } | null;
 };
 
 /** Store an inbound item (idempotent per source+external_id), extract, and ping Telegram for new pending ones. */
@@ -128,6 +130,15 @@ export async function ingest(item: IngestInput): Promise<{ id: number; status: I
     }
     if (ex.met_on && !/^\d{4}-\d{2}-\d{2}$/.test(ex.met_on)) ex.met_on = null;
     if (!ex.met_on && item.meeting_at) ex.met_on = item.meeting_at.slice(0, 10);
+    // the calendar knows who the meeting was with: that beats anything read from the text
+    const k = item.known ?? {};
+    if (k.startup_domain) {
+      if (ex.startup_domain && ex.startup_domain.replace(/^www\./, "") !== k.startup_domain) ex.startup_name = null;
+      ex.startup_domain = k.startup_domain;
+    }
+    if (k.founder_email) ex.founder_email = k.founder_email;
+    if (k.founder_name) ex.founder_name = k.founder_name;
+    if (!ex.startup_name && k.startup_name) ex.startup_name = k.startup_name;
     if (ex.startup_domain) ex.startup_domain = ex.startup_domain.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
   } catch (e) {
     status = "none";
@@ -137,16 +148,16 @@ export async function ingest(item: IngestInput): Promise<{ id: number; status: I
     inserted.id, ex ? JSON.stringify(ex) : null, status, note,
   ]);
 
-  if (status === "pending" && ex?.quote) await ping(item.source, ex.quote).catch((e) => console.error("[since] inbox ping", e));
+  if (status === "pending" && ex?.quote) await ping(item.source, ex.quote, ex.startup_name ?? ex.startup_domain).catch((e) => console.error("[since] inbox ping", e));
   return { id: inserted.id, status, created: true, note };
 }
 
-async function ping(source: InboundSource, quote: string) {
+async function ping(source: InboundSource, quote: string, startup: string | null) {
   if (!telegramConfigured()) return;
   const s = await getSettings();
   if (!s["telegram.enabled"] || !s["telegram.chat_id"]) return;
   const q = quote.length > 300 ? quote.slice(0, 297) + "…" : quote;
-  await sendTelegram(s["telegram.chat_id"], `📥 New 'not yet' from ${esc(SOURCE_LABEL[source] ?? source)}: “${esc(q)}”`, [
+  await sendTelegram(s["telegram.chat_id"], `📥 New 'not yet'${startup ? ` for <b>${esc(startup)}</b>` : ""} from ${esc(SOURCE_LABEL[source] ?? source)}: “${esc(q)}”`, [
     { text: "Review", url: `${publicBase()}/inbox` },
   ]);
 }
