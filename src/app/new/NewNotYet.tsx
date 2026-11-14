@@ -18,6 +18,8 @@ const KINDS: { value: string; label: string }[] = [
   { value: "market_launch:", label: "Market launch" },
   { value: "hiring_push:", label: "Hiring push" },
   { value: "product_shipped:", label: "Product shipped" },
+  { value: "funding_round:", label: "Funding round (Cala)" },
+  { value: "team_size:", label: "Team size (Cala)" },
   { value: "ask_at_checkin:", label: "Ask at check-in" },
 ];
 const FUNCTIONS = ["engineering", "sales", "marketing", "product", "design", "data", "customer_success", "operations", "finance", "people"];

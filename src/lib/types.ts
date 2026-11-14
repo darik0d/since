@@ -1,4 +1,4 @@
-export const MECHANISMS = ["product_shipped", "market_launch", "hiring_push", "announcement", "ask_at_checkin"] as const;
+export const MECHANISMS = ["product_shipped", "market_launch", "hiring_push", "announcement", "funding_round", "team_size", "ask_at_checkin"] as const;
 export type Mechanism = (typeof MECHANISMS)[number];
 export type Subtype = "customer" | "revenue" | "retention";
 export type SourceType = "platform" | "independent" | "founder_controlled";
@@ -27,6 +27,10 @@ export type ConditionParams = {
   metric?: string | null; // ARR | MRR | revenue | NRR | GRR | retention
   threshold?: number | null; // 1000000 or 120 (percent)
   threshold_currency?: string | null;
+  // funding_round (Cala)
+  round_series?: string | null; // "Seed" | "Series A" | null = any new round
+  // team_size (Cala)
+  min_employees?: number | null;
   // set by Since once a named customer's own site is found (not by the LLM)
   customer_sites?: { name: string; domain: string }[];
 };

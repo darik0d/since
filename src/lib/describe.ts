@@ -59,6 +59,15 @@ export function preview(c: DraftCondition, company: string, site: SiteMap): Cond
       if (p.github_repo) sources.push({ label: "GitHub releases", url: `https://github.com/${p.github_repo}/releases`, source_type: "platform" });
       break;
     }
+    case "funding_round":
+      how = `A ${p.round_series ?? "new funding round"} dated after the meeting in Cala's company data (with its source document) confirms.`;
+      sources.push({ label: "Cala: funding rounds + investors", url: null, source_type: "independent" });
+      break;
+    case "team_size":
+      how = `Cala headcount ≥ ${p.min_employees}, with a source dated after the meeting, confirms (an estimate).`;
+      note = "Headcount is an estimate from Cala's sources.";
+      sources.push({ label: "Cala: employee count", url: null, source_type: "independent" });
+      break;
     case "ask_at_checkin":
       how = c.reason ?? "No public signal: ask at the next check-in.";
       break;

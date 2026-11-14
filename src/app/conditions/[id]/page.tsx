@@ -8,6 +8,9 @@ import { CheckButtons, MarkWrong } from "./Actions";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { fmtTime } from "@/lib/time";
 import { readiness, reconnectPath } from "@/lib/reconnect";
+import { calaConfigured, latestSnapshot } from "@/lib/cala";
+import { getCalaBlock } from "@/lib/cala-block";
+import { CalaPanel } from "./CalaPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +74,14 @@ export default async function ConditionPage({
     query<{ status: string }>("SELECT status FROM conditions WHERE startup_id = $1", [c.startup_id]),
   ]);
   const ready = readiness(siblings.map((x) => x.status));
+  // Cala: hidden for the fictional demo domains and when CALA_API_KEY is missing
+  const demo = (process.env.DEMO_DOMAINS || "").split(",").map((x) => x.trim()).includes(c.domain);
+  const calaRow = await query<{ cala_match: string | null; met_on: string | null }>("SELECT cala_match, met_on::text AS met_on FROM startups WHERE id = $1", [c.startup_id]);
+  const showCala = calaConfigured() && !demo;
+  const calaBlock = showCala ? await getCalaBlock(c.startup_id, calaRow[0]?.met_on ?? null).catch(() => null) : null;
+  const presence = showCala && c.mechanism === "market_launch"
+    ? (await latestSnapshot(c.startup_id).catch(() => null))?.snap.presence.filter((p) => !c.params_json.country || p.toLowerCase() === c.params_json.country.toLowerCase()) ?? null
+    : null;
   const reconnect = ready.any ? reconnectPath(c.startup_id) : null;
   const s = startup[0];
   const passing = evidence.filter((e) => e.passes && !e.marked_wrong);
@@ -126,6 +137,8 @@ export default async function ConditionPage({
               </div>
             )}
           </div>
+
+          {showCala && <CalaPanel startupId={c.startup_id} match={calaRow[0]?.cala_match ?? null} items={calaBlock?.items ?? []} presence={presence} />}
 
           <h3 className="section-h">Evidence {passing.length ? `(${passing.length})` : ""}</h3>
           {passing.length === 0 && <div className="glass card muted">No qualifying evidence yet.</div>}

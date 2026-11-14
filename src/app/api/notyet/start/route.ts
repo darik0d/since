@@ -5,6 +5,7 @@ import { one } from "@/lib/db";
 import { normalize } from "@/lib/mapping";
 import { createMonitors, planMonitors } from "@/lib/monitors";
 import { discoverSite } from "@/lib/sources";
+import { calaConfigured, matchStartup } from "@/lib/cala";
 import { bestPossibleEvidence, MECHANISMS, type DraftCondition } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -37,6 +38,10 @@ export async function POST(req: Request) {
     await one("UPDATE inbound_items SET status = 'accepted', startup_id = $2 WHERE id = $1 RETURNING id", [Number(b.inbox_id), startup!.id]);
   }
   const site = await discoverSite(domain);
+  // Cala entity match before the baseline (funding_round / team_size need it). Website must match the
+  // domain; anything else waits for the investor's pick. The fictional demo domains are never matched.
+  const demo = (process.env.DEMO_DOMAINS || "").split(",").map((x) => x.trim()).includes(domain);
+  if (calaConfigured() && !demo) await matchStartup(startup!.id).catch((e) => console.error("[since] cala match", e));
 
   const results = await Promise.all(
     drafts.map(async (d) => {

@@ -23,3 +23,14 @@ if (process.env.GRANOLA_API_KEY && process.env.DATABASE_URL && !g.__sinceGranola
   g.__sinceGranolaTimer = setInterval(run, 10 * 60_000);
   setTimeout(run, 30_000);
 }
+
+// Cala: no webhooks, so poll company snapshots every 30 minutes (diff -> new-investor alert, re-check).
+const gc = globalThis as unknown as { __sinceCalaTimer?: ReturnType<typeof setInterval> };
+if (process.env.CALA_API_KEY && process.env.DATABASE_URL && !gc.__sinceCalaTimer) {
+  const runCala = () =>
+    import("./lib/cala-sync")
+      .then((m) => m.pollCala())
+      .then((r) => console.log(`[since] cala poll: ${r.ok ? `${r.startups} startups` : r.error}`))
+      .catch((e) => console.error("[since] cala poll failed", e));
+  gc.__sinceCalaTimer = setInterval(runCala, 30 * 60_000);
+}

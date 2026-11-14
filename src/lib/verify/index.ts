@@ -3,6 +3,7 @@ import { checkAnnouncement } from "./announcement";
 import { checkHiring } from "./hiring";
 import { checkMarket } from "./market";
 import { checkProduct } from "./product";
+import { checkFundingRound, checkTeamSize } from "./cala";
 
 export async function runCheck(mechanism: Mechanism, ctx: CheckContext): Promise<CheckResult> {
   switch (mechanism) {
@@ -14,6 +15,10 @@ export async function runCheck(mechanism: Mechanism, ctx: CheckContext): Promise
       return checkHiring(ctx);
     case "product_shipped":
       return checkProduct(ctx);
+    case "funding_round":
+      return checkFundingRound(ctx);
+    case "team_size":
+      return checkTeamSize(ctx);
     default:
       return { status: "watching", summary: "Not publicly observable", evidence: [], sources: [], observations: {} };
   }

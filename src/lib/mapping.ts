@@ -15,7 +15,7 @@ const SCHEMA = {
         properties: {
           original_words: { type: "string" },
           plain_words: { type: "string" },
-          mechanism: { type: "string", enum: ["product_shipped", "market_launch", "hiring_push", "announcement", "ask_at_checkin"] },
+          mechanism: { type: "string", enum: ["product_shipped", "market_launch", "hiring_push", "announcement", "funding_round", "team_size", "ask_at_checkin"] },
           subtype: nullable({ type: "string", enum: ["customer", "revenue", "retention"] }),
           reason: nullable("string"),
           params: {
@@ -26,6 +26,7 @@ const SCHEMA = {
               "country", "country_code", "language_code", "currency", "accept",
               "job_function", "min_roles",
               "customer_kind", "min_customers", "metric", "threshold", "threshold_currency",
+              "round_series", "min_employees",
             ],
             properties: {
               github_repo: nullable("string"),
@@ -47,6 +48,8 @@ const SCHEMA = {
               metric: nullable({ type: "string", enum: ["ARR", "MRR", "revenue", "NRR", "GRR", "retention"] }),
               threshold: nullable("number"),
               threshold_currency: nullable("string"),
+              round_series: nullable("string"),
+              min_employees: nullable("integer"),
             },
           },
         },
@@ -74,11 +77,20 @@ Mechanisms (pick exactly one):
 
 Never invent numbers, repos or URLs the investor did not give. All params not relevant to the chosen mechanism must be null.`;
 
+const CALA_MECHANISMS = `
+- funding_round: raising a (next / seed / Series A / ...) round. params: round_series ("Seed", "Series A", ... exactly as said) or null for "your next round".
+- team_size: team / headcount of N+ people. params: min_employees.`;
+const NO_CALA = `
+Funding rounds and team size are NOT watchable here: use ask_at_checkin for them.`;
+
 export async function mapConditions(text: string, company: string, domain: string): Promise<DraftCondition[]> {
+  // funding_round / team_size are verified with Cala data: only offered when Cala is configured
+  const cala = Boolean(process.env.CALA_API_KEY);
+  const schema = cala ? SCHEMA : JSON.parse(JSON.stringify(SCHEMA).replace('"funding_round","team_size",', ""));
   const out = await llmJson<{ conditions: DraftCondition[] }>({
     name: "conditions",
-    schema: SCHEMA,
-    system: SYSTEM,
+    schema,
+    system: SYSTEM.replace("- ask_at_checkin:", (cala ? CALA_MECHANISMS.trim() : NO_CALA.trim()) + "\n- ask_at_checkin:"),
     user: `Startup: ${company} (${domain})\nInvestor's note:\n"""${text}"""`,
   });
   return out.conditions.map(normalize).map(defaultSignals);
@@ -105,6 +117,7 @@ export function normalize(c: DraftCondition): DraftCondition {
     p.accept = p.accept && p.accept.length ? p.accept : ALL_SIGNALS;
   }
   if (c.mechanism === "hiring_push") p.min_roles = Math.max(1, p.min_roles ?? 1);
+  if (c.mechanism === "team_size") p.min_employees = Math.max(1, p.min_employees ?? 1);
   if (c.mechanism === "announcement" && c.subtype === "customer") {
     p.customer_kind = p.customer_kind ?? "any";
     p.min_customers = Math.max(1, p.min_customers ?? 1);

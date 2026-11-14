@@ -179,6 +179,22 @@ CREATE TABLE inbound_items (
 );
 `,
   },
+  {
+    id: "006_cala",
+    sql: `
+ALTER TABLE startups ADD COLUMN cala_entity_id TEXT;
+ALTER TABLE startups ADD COLUMN cala_match TEXT;          -- auto | picked | not_found
+CREATE TABLE cala_cache (key TEXT PRIMARY KEY, json JSONB NOT NULL, fetched_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE cala_snapshots (
+  id         SERIAL PRIMARY KEY,
+  startup_id INTEGER NOT NULL REFERENCES startups(id) ON DELETE CASCADE,
+  entity_id  TEXT NOT NULL,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  data_json  JSONB NOT NULL
+);
+CREATE INDEX cala_snapshots_startup ON cala_snapshots (startup_id, fetched_at DESC);
+`,
+  },
 ];
 
 const LOCK_KEY = 7_041_202_6; // arbitrary constant: one migrator at a time across instances
