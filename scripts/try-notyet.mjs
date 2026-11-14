@@ -19,7 +19,7 @@ for (const c of p.conditions) {
   console.log(`  • ${c.mechanism}${c.subtype ? "/" + c.subtype : ""}: "${c.original_words}" ${JSON.stringify(params)}`);
 }
 const s = await post("/api/notyet/start", {
-  domain: p.domain, company: p.company, logo_url: p.logo_url, met_on: "2026-11-12", met_where: "test run", text,
+  domain: p.domain, company: p.company, logo_url: p.logo_url, met_on: process.env.MET_ON || "2026-11-13", met_where: process.env.MET_WHERE || "Slush", text,
   conditions: p.conditions.map(({ preview, ...c }) => c),
 });
 for (const c of s.conditions) {
