@@ -1,7 +1,8 @@
 import { query } from "@/lib/db";
+import { currentUser } from "@/lib/auth";
 import { fmtTime } from "@/lib/time";
 import { SOURCE_LABEL, type InboundRow } from "@/lib/inbound";
-import { granolaConfigured } from "@/lib/granola";
+import { granolaKeyFor } from "@/lib/granola";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { InboxActions, PasteBox } from "./InboxClient";
 import "./inbox.css";
@@ -9,12 +10,14 @@ import "./inbox.css";
 export const dynamic = "force-dynamic";
 
 export default async function Inbox() {
+  const me = (await currentUser())!;
+  const uid = me.id;
   const [pending, recent] = await Promise.all([
-    query<InboundRow>("SELECT * FROM inbound_items WHERE status = 'pending' ORDER BY received_at DESC LIMIT 50"),
-    query<InboundRow>("SELECT * FROM inbound_items WHERE status <> 'pending' ORDER BY received_at DESC LIMIT 15"),
+    query<InboundRow>("SELECT * FROM inbound_items WHERE status = 'pending' AND user_id = $1 ORDER BY received_at DESC LIMIT 50", [uid]),
+    query<InboundRow>("SELECT * FROM inbound_items WHERE status <> 'pending' AND user_id = $1 ORDER BY received_at DESC LIMIT 15", [uid]),
   ]);
   const sources = [
-    granolaConfigured() ? "meetings" : null,
+    granolaKeyFor(me) ? "meetings" : null,
     process.env.INBOUND_EMAIL_BASIC && process.env.INVESTOR_EMAILS ? "emails" : null,
     "notes",
   ].filter(Boolean).join(", ").replace(/, ([^,]*)$/, " and $1");
@@ -31,7 +34,7 @@ export default async function Inbox() {
       <PasteBox />
 
       <h3 className="section-h">Pending {pending.length ? `(${pending.length})` : ""}</h3>
-      {pending.length === 0 && <div className="glass card muted">No pending &ldquo;not yet&rdquo;s. Paste an email above{granolaConfigured() ? " or sync Granola in Settings" : ""}.</div>}
+      {pending.length === 0 && <div className="glass card muted">No pending &ldquo;not yet&rdquo;s. Paste an email above{granolaKeyFor(me) ? " or sync Granola in Settings" : ""}.</div>}
       {pending.map((it) => {
         const x = it.extracted_json;
         const prefill = new URLSearchParams(

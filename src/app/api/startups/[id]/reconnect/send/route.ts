@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { startupOwner } from "@/lib/auth";
 import { checkToken, loadFacts, renderEmail, sendReconnect, smtpConfigured } from "@/lib/reconnect";
 
 export const runtime = "nodejs";
@@ -12,6 +13,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const b = await req.json();
   if (!checkToken(id, b.t)) return NextResponse.json({ error: "bad or missing token" }, { status: 403 });
   if (!smtpConfigured()) return NextResponse.json({ error: "SMTP is not configured" }, { status: 400 });
+  // pilot users copy the email or open it in Gmail; sending through our SMTP is the owner's only
+  if (!(await startupOwner(id))?.is_admin) return NextResponse.json({ error: "Use Copy HTML or Open in Gmail" }, { status: 403 });
   const to = String(b.to ?? "").trim();
   if (!/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(to)) return NextResponse.json({ error: "enter one valid email address" }, { status: 400 });
   const f = await loadFacts(id);

@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSettings, setSettings, type Settings } from "@/lib/settings";
 import { botInfo, telegramConfigured } from "@/lib/telegram";
+import { currentUserId } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const s = await getSettings();
+  const s = await getSettings((await currentUserId())!);
   const bot = telegramConfigured() ? await botInfo().catch(() => null) : null;
   return NextResponse.json({ settings: s, telegram: { configured: telegramConfigured(), bot: bot?.username ?? null } });
 }
@@ -21,5 +22,5 @@ export async function PATCH(req: Request) {
       ([k, v]) => (allowed.includes(k as keyof Settings) && typeof v === "boolean") || (texts.includes(k as keyof Settings) && typeof v === "string"),
     ),
   );
-  return NextResponse.json({ settings: await setSettings(clean) });
+  return NextResponse.json({ settings: await setSettings((await currentUserId())!, clean) });
 }

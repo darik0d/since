@@ -1,3 +1,5 @@
+import { currentUserId } from "@/lib/auth";
+import { ownsCondition } from "@/lib/conditions";
 import { NextResponse } from "next/server";
 import { checkCondition } from "@/lib/conditions";
 
@@ -9,6 +11,7 @@ export const maxDuration = 120;
 // scrape / news search. No monitor is involved. Returns the evidence and the resulting status.
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
+  if (!(await ownsCondition(id, await currentUserId()))) return NextResponse.json({ error: "not found" }, { status: 404 });
   try {
     const r = await checkCondition(id, { fresh: true, trigger: "check now (direct)" });
     return NextResponse.json({

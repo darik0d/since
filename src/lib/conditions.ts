@@ -3,6 +3,7 @@ import { runCheck } from "./verify";
 import { statusFrom } from "./verify/status";
 import { maybeAlert } from "./alerts";
 import { createMonitors } from "./monitors";
+import { withUser } from "./usage";
 import { discoverSite } from "./sources";
 import type { CheckResult, ConditionParams, Mechanism, Status, Subtype } from "./types";
 
@@ -25,14 +26,25 @@ export type ConditionRow = {
   updated_at: string;
   domain: string;
   company: string;
+  owner_id: number;
 };
 
 export async function getCondition(id: number) {
   return one<ConditionRow>(
-    `SELECT c.*, s.domain, COALESCE(s.name, s.domain) AS company
+    `SELECT c.*, s.domain, COALESCE(s.name, s.domain) AS company, s.user_id AS owner_id
      FROM conditions c JOIN startups s ON s.id = c.startup_id WHERE c.id = $1`,
     [id],
   );
+}
+
+/** Does this user own the condition (through its startup)? */
+export async function ownsCondition(conditionId: number, userId: number | null) {
+  if (!userId) return false;
+  return Boolean(await one("SELECT 1 FROM conditions c JOIN startups s ON s.id = c.startup_id WHERE c.id = $1 AND s.user_id = $2", [conditionId, userId]));
+}
+export async function ownsStartup(startupId: number, userId: number | null) {
+  if (!userId) return false;
+  return Boolean(await one("SELECT 1 FROM startups WHERE id = $1 AND user_id = $2", [startupId, userId]));
 }
 
 export async function timeline(conditionId: number, kind: string, detail: unknown = null) {
@@ -60,7 +72,10 @@ type CheckOpts = { fresh?: boolean; trigger?: string; rawWebhookId?: number };
 /** Run the verifier for one condition, store evidence + timeline, move the status, alert on change. */
 export function checkCondition(id: number, opts: CheckOpts = {}) {
   const prev = running.get(id) ?? Promise.resolve();
-  const next = prev.catch(() => {}).then(() => checkConditionNow(id, opts));
+  const next = prev.catch(() => {}).then(async () => {
+    const owner = await one<{ user_id: number }>("SELECT s.user_id FROM conditions c JOIN startups s ON s.id = c.startup_id WHERE c.id = $1", [id]);
+    return withUser(owner?.user_id ?? null, () => checkConditionNow(id, opts));
+  });
   running.set(id, next);
   next.finally(() => running.get(id) === next && running.delete(id)).catch(() => {});
   return next;
@@ -83,6 +98,7 @@ async function checkConditionNow(id: number, opts: CheckOpts) {
     params: c.params_json,
     subtype: c.subtype,
     fresh: opts.fresh,
+    startupId: c.startup_id,
   });
 
   const client = await pool().connect();

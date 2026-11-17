@@ -1,4 +1,5 @@
 import { one, query } from "./db";
+import { recordUsage } from "./usage";
 
 // Cala (https://docs.cala.ai): verified, sourced company data. Server only. REST, header X-API-KEY.
 // Every response is cached in cala_cache for 1 hour. Cala has no webhooks: a 30-minute poll of
@@ -15,6 +16,7 @@ async function cala<T>(method: "GET" | "POST", path: string, body?: unknown, opt
     const hit = await one<{ json: T }>("SELECT json FROM cala_cache WHERE key = $1 AND fetched_at > now() - ($2 || ' milliseconds')::interval", [key, String(TTL_MS)]);
     if (hit) return hit.json;
   }
+  recordUsage("cala", path.split("?")[0].split("/")[2] ?? "entities");
   const r = await fetch(BASE + path, {
     method,
     headers: { "X-API-KEY": process.env.CALA_API_KEY!, ...(body ? { "Content-Type": "application/json" } : {}) },

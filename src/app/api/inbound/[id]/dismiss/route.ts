@@ -1,3 +1,4 @@
+import { currentUserId } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { one } from "@/lib/db";
 
@@ -6,6 +7,6 @@ export const dynamic = "force-dynamic";
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
-  const r = await one("UPDATE inbound_items SET status = 'dismissed' WHERE id = $1 AND status = 'pending' RETURNING id", [id]);
+  const r = await one("UPDATE inbound_items SET status = 'dismissed' WHERE id = $1 AND status = 'pending' AND user_id = $2 RETURNING id", [id, (await currentUserId())!]);
   return NextResponse.json({ ok: Boolean(r) }, { status: r ? 200 : 404 });
 }

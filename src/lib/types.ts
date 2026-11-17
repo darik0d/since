@@ -72,6 +72,7 @@ export type CheckContext = {
   params: ConditionParams;
   subtype: Subtype | null;
   fresh?: boolean; // bypass Context.dev scrape cache
+  startupId?: number;
 };
 
 /** Best possible evidence per mechanism (shown on every card). Deterministic, not LLM. */

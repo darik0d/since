@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { calaConfigured, matchStartup } from "@/lib/cala";
 import { syncCalaStartup } from "@/lib/cala-sync";
 import { query } from "@/lib/db";
+import { currentUserId } from "@/lib/auth";
+import { ownsStartup } from "@/lib/conditions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +14,7 @@ export const maxDuration = 60;
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!calaConfigured()) return NextResponse.json({ error: "CALA_API_KEY not set" }, { status: 400 });
   const id = Number((await params).id);
+  if (!(await ownsStartup(id, await currentUserId()))) return NextResponse.json({ error: "not found" }, { status: 404 });
   const b = await req.json().catch(() => ({}));
   try {
     if (b.entity_id) {

@@ -2,12 +2,13 @@ import { publicBase } from "@/lib/env";
 import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/settings";
 import { sendTelegram } from "@/lib/telegram";
+import { currentUserId } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const s = await getSettings();
+  const s = await getSettings((await currentUserId())!);
   if (!s["telegram.chat_id"]) return NextResponse.json({ ok: false, error: "Telegram chat not connected" }, { status: 400 });
   try {
     const base = publicBase();

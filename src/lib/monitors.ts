@@ -1,6 +1,6 @@
 import { publicBase } from "./env";
 import { context, type CreateMonitorInput } from "./context";
-import { query } from "./db";
+import { one, query } from "./db";
 import type { SiteMap } from "./sources";
 import type { DraftCondition, SourceType } from "./types";
 
@@ -15,7 +15,26 @@ export type PlannedMonitor = {
   input: Omit<CreateMonitorInput, "webhook" | "schedule">;
 };
 
-const DEMO_DOMAINS = (process.env.DEMO_DOMAINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+export const DAILY_MINUTES = 1440;
+export const PRIORITY_MINUTES = 360;
+export const MAX_PRIORITY = 3;
+
+/** Priority on/off: re-schedule the startup's Context.dev monitors (6 h vs daily). */
+export async function setPriority(startupId: number, on: boolean) {
+  const interval = on ? PRIORITY_MINUTES : DAILY_MINUTES;
+  await query("UPDATE startups SET priority = $2 WHERE id = $1", [startupId, on]);
+  const mons = await query<{ id: string }>("SELECT m.id FROM monitors m JOIN conditions c ON c.id = m.condition_id WHERE c.startup_id = $1", [startupId]);
+  const failed: string[] = [];
+  for (const m of mons) {
+    try {
+      await context.updateMonitor(m.id, { schedule: { type: "interval", frequency: interval, unit: "minutes" } } as never);
+      await query("UPDATE monitors SET interval_minutes = $2 WHERE id = $1", [m.id, interval]);
+    } catch (e) {
+      failed.push(`${m.id}: ${(e as Error).message}`);
+    }
+  }
+  return { monitors: mons.length, failed };
+}
 
 export function planMonitors(c: DraftCondition, company: string, site: SiteMap): PlannedMonitor[] {
   const d = site.domain;
@@ -130,9 +149,14 @@ export async function createMonitors(conditionId: number, domain: string, planne
   const roomy = lim.monitors_limit > 20;
   const created: string[] = [];
   const errors: string[] = [];
-  const demo = DEMO_DOMAINS.includes(domain);
+  // cost control: daily by default, every 6 h for priority watches; "extra" monitors only for the owner
+  const own = await one<{ user_id: number; priority: boolean }>(
+    "SELECT s.user_id, s.priority FROM conditions c JOIN startups s ON s.id = c.startup_id WHERE c.id = $1",
+    [conditionId],
+  );
+  const interval = own?.priority ? PRIORITY_MINUTES : DAILY_MINUTES;
   for (const m of planned) {
-    if (m.priority === "extra" && !roomy) continue;
+    if (m.priority === "extra" && (!roomy || own?.user_id !== 1)) continue;
     if (free <= 0) break;
     // Context.dev: page-target instructions need semantic detection. Founder pages use exact detection
     // (any change -> Since re-checks with its own rules), so instructions are dropped there.
@@ -144,13 +168,13 @@ export async function createMonitors(conditionId: number, domain: string, planne
       const mon = await context.createMonitor({
         ...m.input,
         target,
-        schedule: { type: "interval", frequency: demo ? 10 : 30, unit: "minutes" },
+        schedule: { type: "interval", frequency: interval, unit: "minutes" },
         webhook: { url: `${publicBase()}/api/webhooks/context`, events: ["change.detected"], retry: {} },
       });
       await query(
-        `INSERT INTO monitors (id, condition_id, target_type, target_json, source_type, webhook_secret, name, role)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [mon.id, conditionId, m.input.target.type, JSON.stringify(m.input.target), m.source_type, mon.webhook?.secret ?? null, m.input.name, m.role],
+        `INSERT INTO monitors (id, condition_id, target_type, target_json, source_type, webhook_secret, name, role, interval_minutes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [mon.id, conditionId, m.input.target.type, JSON.stringify(m.input.target), m.source_type, mon.webhook?.secret ?? null, m.input.name, m.role, interval],
       );
       created.push(mon.id);
       free--;

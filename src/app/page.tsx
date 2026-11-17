@@ -1,3 +1,5 @@
+import { PriorityStar } from "@/components/PriorityStar";
+import { currentUserId } from "@/lib/auth";
 import Link from "next/link";
 import { one, query } from "@/lib/db";
 import { StatusChip, type Status } from "@/components/StatusChip";
@@ -20,12 +22,14 @@ type Row = {
   latest_change: string | null;
   latest_change_at: string | null;
   reconnected_at: string | null;
+  priority: boolean;
 };
 
 
 export default async function Watchlist() {
+  const uid = (await currentUserId())!;
   const rows = await query<Row>(
-    `SELECT s.id, s.domain, s.display_domain, s.name, s.logo_url, to_char(s.met_on, 'FMDD Mon YYYY') AS met_on, s.met_where,
+    `SELECT s.id, s.priority, s.domain, s.display_domain, s.name, s.logo_url, to_char(s.met_on, 'FMDD Mon YYYY') AS met_on, s.met_where,
             COALESCE(json_agg(json_build_object('id', c.id, 'status', c.status, 'label', COALESCE(c.plain_words, c.original_words))
                      ORDER BY c.id) FILTER (WHERE c.id IS NOT NULL), '[]') AS conditions,
             max(c.last_checked_at) AS last_checked,
@@ -36,13 +40,16 @@ export default async function Watchlist() {
               WHERE c2.startup_id = s.id AND t.kind = 'status_changed') AS latest_change_at,
             (SELECT max(sent_at) FROM reconnects r WHERE r.startup_id = s.id AND r.status = 'sent') AS reconnected_at
      FROM startups s LEFT JOIN conditions c ON c.startup_id = s.id
+     WHERE s.user_id = $1
      GROUP BY s.id ORDER BY s.created_at DESC`,
+    [uid],
   );
   const met =
     (
       await one<{ met: number }>(
-        `SELECT COUNT(*) AS met FROM conditions
-         WHERE status IN ('reported','confirmed') AND updated_at >= now() - interval '7 days'`,
+        `SELECT COUNT(*) AS met FROM conditions c JOIN startups s ON s.id = c.startup_id
+         WHERE s.user_id = $1 AND c.status IN ('reported','confirmed') AND c.updated_at >= now() - interval '7 days'`,
+        [uid],
       )
     )?.met ?? 0;
 
@@ -102,7 +109,7 @@ export default async function Watchlist() {
                         </div>
                       )}
                       <div>
-                        <div style={{ fontWeight: 600 }}>{r.name ?? r.domain}</div>
+                        <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>{r.name ?? r.domain}<PriorityStar id={r.id} on={r.priority} /></div>
                         <div className="mono muted">{r.display_domain ?? r.domain}</div>
                         <ReconnectCell r={r} />
                       </div>

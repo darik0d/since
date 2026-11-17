@@ -1,3 +1,4 @@
+import { currentUserId } from "@/lib/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCondition } from "@/lib/conditions";
@@ -62,7 +63,7 @@ export default async function ConditionPage({
   const id = Number((await params).id);
   const wrongId = Number((await searchParams).wrong) || null;
   const c = await getCondition(id);
-  if (!c) notFound();
+  if (!c || c.owner_id !== (await currentUserId())) notFound();
   const [evidence, tl, monitors, startup, siblings] = await Promise.all([
     query<Ev>("SELECT * FROM evidence WHERE condition_id = $1 ORDER BY passes DESC, created_at DESC", [id]),
     query<Tl>("SELECT * FROM timeline_events WHERE condition_id = $1 ORDER BY at DESC, id DESC LIMIT 60", [id]),

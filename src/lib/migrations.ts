@@ -195,6 +195,72 @@ CREATE TABLE cala_snapshots (
 CREATE INDEX cala_snapshots_startup ON cala_snapshots (startup_id, fetched_at DESC);
 `,
   },
+  {
+    id: "007_accounts",
+    sql: `
+-- Pilot accounts. Everything that existed before belongs to user 1 (the owner; email set at startup from ADMIN_EMAIL).
+CREATE TABLE users (
+  id              SERIAL PRIMARY KEY,
+  email           TEXT NOT NULL UNIQUE,
+  is_admin        BOOLEAN NOT NULL DEFAULT false,
+  tg_token        TEXT NOT NULL UNIQUE DEFAULT substr(md5(random()::text || clock_timestamp()::text), 1, 16),
+  inbox_token     TEXT NOT NULL UNIQUE DEFAULT substr(md5(random()::text || clock_timestamp()::text), 1, 10),
+  granola_key_enc TEXT,
+  max_watches     INTEGER NOT NULL DEFAULT 25,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_login_at   TIMESTAMPTZ
+);
+INSERT INTO users (id, email, is_admin, max_watches) VALUES (1, 'owner@since.local', true, 1000);
+SELECT setval('users_id_seq', 1);
+
+CREATE TABLE login_tokens (
+  token_hash TEXT PRIMARY KEY,
+  email      TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ
+);
+
+ALTER TABLE startups ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+UPDATE startups SET user_id = 1;
+ALTER TABLE startups ALTER COLUMN user_id SET NOT NULL;
+ALTER TABLE startups DROP CONSTRAINT startups_domain_key;
+ALTER TABLE startups ADD CONSTRAINT startups_user_domain UNIQUE (user_id, domain);
+ALTER TABLE startups ADD COLUMN priority BOOLEAN NOT NULL DEFAULT false; -- checked every 6 h instead of daily
+
+ALTER TABLE inbound_items ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+UPDATE inbound_items SET user_id = 1;
+ALTER TABLE inbound_items ALTER COLUMN user_id SET NOT NULL;
+ALTER TABLE inbound_items DROP CONSTRAINT inbound_items_source_external_id_key;
+ALTER TABLE inbound_items ADD CONSTRAINT inbound_items_user_source_ext UNIQUE (user_id, source, external_id);
+
+ALTER TABLE settings ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE settings DROP CONSTRAINT settings_pkey;
+ALTER TABLE settings ADD PRIMARY KEY (user_id, key);
+ALTER TABLE settings ALTER COLUMN user_id DROP DEFAULT;
+
+-- global key/value (e.g. the Telegram getUpdates offset)
+CREATE TABLE app_state (key TEXT PRIMARY KEY, value JSONB);
+
+-- Context.dev / Cala usage per user (for the admin page)
+CREATE TABLE api_usage (
+  id       BIGSERIAL PRIMARY KEY,
+  user_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  service  TEXT NOT NULL,   -- context | cala
+  kind     TEXT NOT NULL,   -- scrape | news | monitor_run | ...
+  units    INTEGER NOT NULL DEFAULT 1,
+  at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX api_usage_user_at ON api_usage (user_id, at DESC);
+`,
+  },
+  {
+    id: "008_monitor_interval",
+    sql: `
+-- how often Context.dev runs each monitor (minutes): daily by default, 6 h for priority watches
+ALTER TABLE monitors ADD COLUMN interval_minutes INTEGER NOT NULL DEFAULT 30;
+`,
+  },
 ];
 
 const LOCK_KEY = 7_041_202_6; // arbitrary constant: one migrator at a time across instances

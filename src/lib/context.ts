@@ -1,3 +1,4 @@
+import { recordUsage } from "./usage";
 // Minimal Context.dev REST client (server-side only).
 // Docs: https://docs.context.dev  Base: https://api.context.dev/v1
 
@@ -52,6 +53,9 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     json = JSON.parse(text);
   } catch {}
   if (!res.ok) throw new ContextApiError(res.status, json, path);
+  const kind = path.startsWith("/web/scrape") ? "scrape" : path.startsWith("/news") ? "news" : path.startsWith("/brand") ? "brand"
+    : /\/monitors\/[^/]+\/run/.test(path) ? "monitor_run_now" : method === "POST" && path === "/monitors" ? "monitor_create" : null;
+  if (kind) recordUsage("context", kind);
   return json as T;
 }
 
@@ -89,6 +93,7 @@ export const context = {
   createMonitor: (input: CreateMonitorInput) => call<Monitor>("POST", "/monitors", { mode: "web", ...input }),
   runMonitorNow: (id: string) =>
     call<{ monitor_id: string; run_id: string; queued: boolean }>("POST", `/monitors/${encodeURIComponent(id)}/run`),
+  updateMonitor: (id: string, patch: Partial<CreateMonitorInput>) => call<Monitor>("PATCH", `/monitors/${encodeURIComponent(id)}`, patch),
   deleteMonitor: (id: string) => call<{ id: string; deleted: boolean }>("DELETE", `/monitors/${encodeURIComponent(id)}`),
   brand: (domain: string) =>
     call<{ brand: { domain: string; title?: string; logos?: { url: string; mode?: string; type?: string }[] } }>(

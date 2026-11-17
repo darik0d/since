@@ -22,10 +22,11 @@ const links: { href: string; label: string; icon: keyof typeof icons }[] = [
   { href: "/new", label: "New “not yet”", icon: "plus" },
   { href: "/inbox", label: "Inbox", icon: "inbox" },
   { href: "/webhooks", label: "Webhook log", icon: "bolt" },
+  { href: "/admin", label: "Admin", icon: "bolt" },
   { href: "/settings", label: "Notifications", icon: "gear" },
 ];
 
-export function Nav() {
+export function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
   const path = usePathname();
   const [pending, setPending] = useState(0);
   useEffect(() => {
@@ -36,7 +37,7 @@ export function Nav() {
   }, [path]);
   return (
     <>
-      {links.map((l) => {
+      {links.filter((l) => isAdmin || !["/webhooks", "/admin"].includes(l.href)).map((l) => {
         const active = l.href === "/" ? path === "/" : path.startsWith(l.href);
         return (
           <Link key={l.href} href={l.href} className={`nav-link${active ? " active" : ""}`}>

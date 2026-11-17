@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { context, ContextApiError } from "@/lib/context";
 import { one, pool, query } from "@/lib/db";
+import { currentUserId } from "@/lib/auth";
+import { MAX_PRIORITY, setPriority } from "@/lib/monitors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,9 +11,10 @@ export const dynamic = "force-dynamic";
 // :id is the numeric id or the startup's domain (DELETE /api/startups/wolt.com).
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const key = decodeURIComponent((await params).id);
-  const s = /^d+$/.test(key)
-    ? await one<{ id: number; domain: string }>("SELECT id, domain FROM startups WHERE id = $1", [Number(key)])
-    : await one<{ id: number; domain: string }>("SELECT id, domain FROM startups WHERE domain = $1", [key.toLowerCase()]);
+  const uid = (await currentUserId())!;
+  const s = /^\d+$/.test(key)
+    ? await one<{ id: number; domain: string }>("SELECT id, domain FROM startups WHERE id = $1 AND user_id = $2", [Number(key), uid])
+    : await one<{ id: number; domain: string }>("SELECT id, domain FROM startups WHERE domain = $1 AND user_id = $2", [key.toLowerCase(), uid]);
   if (!s) return NextResponse.json({ error: "not found" }, { status: 404 });
   const id = s.id;
   const monitors = await query<{ id: string }>(
@@ -43,4 +46,19 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     client.release();
   }
   return NextResponse.json({ ok: true, domain: s.domain, monitors_deleted: deleted.length });
+}
+
+// Priority watch (checked every 6 h instead of daily); at most MAX_PRIORITY per user.
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const uid = (await currentUserId())!;
+  const id = Number((await params).id);
+  const s = await one<{ priority: boolean }>("SELECT priority FROM startups WHERE id = $1 AND user_id = $2", [id, uid]);
+  if (!s) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const on = Boolean((await req.json().catch(() => ({}))).priority);
+  if (on && !s.priority) {
+    const n = (await one<{ n: number }>("SELECT COUNT(*)::int AS n FROM startups WHERE user_id = $1 AND priority", [uid]))?.n ?? 0;
+    if (n >= MAX_PRIORITY) return NextResponse.json({ error: `Up to ${MAX_PRIORITY} priority watches. Unstar one first.` }, { status: 400 });
+  }
+  const r = await setPriority(id, on);
+  return NextResponse.json({ ok: true, priority: on, ...r });
 }

@@ -18,17 +18,17 @@ const SOURCE: Record<string, string> = { platform: "platform", independent: "ind
 
 export async function maybeAlert(conditionId: number, from: Status, to: Status, note: string | null) {
   if (!["confirmed", "reported", "needs_review"].includes(to)) return;
-  const s = await getSettings();
-  if (to === "reported" && !s["alerts.reported"]) return;
-  if (to === "needs_review" && !s["alerts.needs_review"]) return;
-
-  const c = await one<{ startup_id: number; original_words: string; plain_words: string | null; company: string; domain: string; met_on: string | null; met_where: string | null }>(
-    `SELECT c.startup_id, c.original_words, c.plain_words, COALESCE(s.name, s.domain) AS company, s.domain,
+  const c = await one<{ user_id: number; startup_id: number; original_words: string; plain_words: string | null; company: string; domain: string; met_on: string | null; met_where: string | null }>(
+    `SELECT s.user_id, c.startup_id, c.original_words, c.plain_words, COALESCE(s.name, s.domain) AS company, s.domain,
             to_char(s.met_on, 'FMDD Mon YYYY') AS met_on, s.met_where
      FROM conditions c JOIN startups s ON s.id = c.startup_id WHERE c.id = $1`,
     [conditionId],
   );
   if (!c) return;
+  // alerts go to the startup owner's Telegram, with their own preferences
+  const s = await getSettings(c.user_id);
+  if (to === "reported" && !s["alerts.reported"]) return;
+  if (to === "needs_review" && !s["alerts.needs_review"]) return;
   // best evidence for this status: independent/platform first, newest first
   const ev = await one<Ev>(
     `SELECT id, url, source_type, snapshot_time, detected_at, excerpt, rule_passed FROM evidence

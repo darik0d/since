@@ -88,6 +88,7 @@ export function verbatimQuote(raw: string, quote: string | null): string | null 
 }
 
 export type IngestInput = {
+  user_id: number;
   source: InboundSource;
   external_id: string;
   sender?: string | null;
@@ -101,14 +102,14 @@ export type IngestInput = {
 /** Store an inbound item (idempotent per source+external_id), extract, and ping Telegram for new pending ones. */
 export async function ingest(item: IngestInput): Promise<{ id: number; status: InboundRow["status"]; created: boolean; note: string | null }> {
   const inserted = await one<{ id: number }>(
-    `INSERT INTO inbound_items (source, external_id, sender, title, meeting_at, raw_text, status)
-     VALUES ($1,$2,$3,$4,$5,$6,'pending') ON CONFLICT (source, external_id) DO NOTHING RETURNING id`,
-    [item.source, item.external_id, item.sender ?? null, item.title ?? null, item.meeting_at ?? null, item.raw_text],
+    `INSERT INTO inbound_items (user_id, source, external_id, sender, title, meeting_at, raw_text, status)
+     VALUES ($7,$1,$2,$3,$4,$5,$6,'pending') ON CONFLICT (user_id, source, external_id) DO NOTHING RETURNING id`,
+    [item.source, item.external_id, item.sender ?? null, item.title ?? null, item.meeting_at ?? null, item.raw_text, item.user_id],
   );
   if (!inserted) {
     const ex = await one<{ id: number; status: InboundRow["status"]; note: string | null }>(
-      "SELECT id, status, note FROM inbound_items WHERE source = $1 AND external_id = $2",
-      [item.source, item.external_id],
+      "SELECT id, status, note FROM inbound_items WHERE source = $1 AND external_id = $2 AND user_id = $3",
+      [item.source, item.external_id, item.user_id],
     );
     return { id: ex!.id, status: ex!.status, created: false, note: ex!.note };
   }
@@ -149,16 +150,24 @@ export async function ingest(item: IngestInput): Promise<{ id: number; status: I
     inserted.id, ex ? JSON.stringify(ex) : null, status, note,
   ]);
 
-  if (status === "pending" && ex?.quote) await ping(item.source, ex.quote, ex.startup_name ?? ex.startup_domain).catch((e) => console.error("[since] inbox ping", e));
+  if (status === "pending" && ex?.quote) await ping(item.user_id, item.source, ex.quote, ex.startup_name ?? ex.startup_domain).catch((e) => console.error("[since] inbox ping", e));
   return { id: inserted.id, status, created: true, note };
 }
 
-async function ping(source: InboundSource, quote: string, startup: string | null) {
+async function ping(userId: number, source: InboundSource, quote: string, startup: string | null) {
   if (!telegramConfigured()) return;
-  const s = await getSettings();
+  const s = await getSettings(userId);
   if (!s["telegram.enabled"] || !s["telegram.chat_id"]) return;
   const q = quote.length > 300 ? quote.slice(0, 297) + "…" : quote;
   await sendTelegram(s["telegram.chat_id"], `📥 New 'not yet'${startup ? ` for <b>${esc(startup)}</b>` : ""} from ${esc(SOURCE_LABEL[source] ?? source)}: “${esc(q)}”`, [
     { text: "Review", url: `${publicBase()}/inbox` },
   ]);
+}
+
+/** The user's personal forwarding address: plus-addressing on the Postmark inbound address (routed by MailboxHash). */
+export function inboxAddress(user: { id: number; inbox_token: string }): string | null {
+  const base = process.env.INBOUND_EMAIL_ADDRESS;
+  if (!base || !process.env.INBOUND_EMAIL_BASIC) return null;
+  const [local, domain] = base.split("@");
+  return `${local}+${user.inbox_token}@${domain}`;
 }

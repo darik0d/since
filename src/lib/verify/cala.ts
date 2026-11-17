@@ -9,8 +9,8 @@ const norm = (s: string | null | undefined) => (s ?? "").toLowerCase().replace(/
 
 async function load(ctx: CheckContext) {
   const s = await one<{ id: number; cala_entity_id: string | null; met_on: string | null }>(
-    "SELECT id, cala_entity_id, met_on::text AS met_on FROM startups WHERE domain = $1",
-    [ctx.domain],
+    ctx.startupId ? "SELECT id, cala_entity_id, met_on::text AS met_on FROM startups WHERE id = $1" : "SELECT id, cala_entity_id, met_on::text AS met_on FROM startups WHERE domain = $1 ORDER BY id LIMIT 1",
+    [ctx.startupId ?? ctx.domain],
   );
   if (!s) return { error: "startup not found" as const };
   if (!calaConfigured()) return { error: "Cala is not configured (CALA_API_KEY)" as const };

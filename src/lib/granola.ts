@@ -1,5 +1,8 @@
 import { ingest } from "./inbound";
 import { getSettings, setSettings } from "./settings";
+import { query } from "./db";
+import { userById } from "./auth";
+import { open } from "./secretbox";
 
 // Granola public REST API (read-only). Polls new meeting notes and feeds summary + transcript into
 // the inbound extractor. Only notes with a finished AI summary are returned by Granola.
@@ -31,11 +34,11 @@ class GranolaError extends Error {
   }
 }
 
-async function get<T>(path: string): Promise<T> {
+async function get<T>(path: string, key: string): Promise<T> {
   await sleep(250); // ~5 req/s limit
   for (let attempt = 0; ; attempt++) {
     const r = await fetch(BASE + path, {
-      headers: { Authorization: `Bearer ${process.env.GRANOLA_API_KEY}` },
+      headers: { Authorization: `Bearer ${key}` },
       signal: AbortSignal.timeout(20_000),
     });
     if (r.status === 429 && attempt < 3) {
@@ -48,13 +51,13 @@ async function get<T>(path: string): Promise<T> {
   }
 }
 
-async function fullTranscript(id: string): Promise<TranscriptItem[]> {
+async function fullTranscript(id: string, key: string): Promise<TranscriptItem[]> {
   const out: TranscriptItem[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < 40; page++) {
     const q = new URLSearchParams({ page_size: "100" });
     if (cursor) q.set("cursor", cursor);
-    const r = await get<{ transcript: TranscriptItem[]; hasMore: boolean; cursor: string | null }>(`/v1/notes/${id}/transcript?${q}`);
+    const r = await get<{ transcript: TranscriptItem[]; hasMore: boolean; cursor: string | null }>(`/v1/notes/${id}/transcript?${q}`, key);
     out.push(...(r.transcript ?? []));
     if (!r.hasMore || !r.cursor) break;
     cursor = r.cursor;
@@ -62,13 +65,13 @@ async function fullTranscript(id: string): Promise<TranscriptItem[]> {
   return out;
 }
 
-async function getNote(id: string): Promise<Note> {
+async function getNote(id: string, key: string): Promise<Note> {
   try {
-    return await get<Note>(`/v1/notes/${id}?include=transcript`);
+    return await get<Note>(`/v1/notes/${id}?include=transcript`, key);
   } catch (e) {
     if (e instanceof GranolaError && e.code === "TRANSCRIPT_TOO_LARGE") {
-      const n = await get<Note>(`/v1/notes/${id}`);
-      return { ...n, transcript: await fullTranscript(id).catch(() => []) };
+      const n = await get<Note>(`/v1/notes/${id}`, key);
+      return { ...n, transcript: await fullTranscript(id, key).catch(() => []) };
     }
     throw e;
   }
@@ -88,7 +91,7 @@ const nameFromDomain = (d: string, title?: string | null) => {
  * Who was the meeting with? The first attendee/invitee outside the investor's own domain(s).
  * e.g. a meeting with bryan@nordwind.io -> startup nordwind.io, founder bryan@nordwind.io. Deterministic, not LLM.
  */
-export function meetingCounterpart(n: Note) {
+export function meetingCounterpart(n: Note, ownExtra: string[] = (process.env.INVESTOR_EMAILS ?? "").split(",")) {
   const own = new Set(
     [n.owner?.email, ...(process.env.INVESTOR_EMAILS ?? "").split(",")]
       .map((e) => (e ?? "").trim().toLowerCase())
@@ -131,19 +134,36 @@ function noteText(n: Note): string {
   ].join("\n").trim();
 }
 
-let syncing: Promise<GranolaSyncResult> | null = null;
+const syncing = new Map<number, Promise<GranolaSyncResult>>();
 export type GranolaSyncResult = { ok: boolean; seen: number; new_items: number; pending: number; error?: string; last_sync: string };
 
-/** Pull notes created since the last sync (first sync: 14 days back) and ingest them. One sync at a time. */
-export function syncGranola(): Promise<GranolaSyncResult> {
-  if (!syncing) syncing = doSync().finally(() => (syncing = null));
-  return syncing;
+/** A user's Granola key: their own (encrypted in the DB) or, for the owner, GRANOLA_API_KEY. */
+export function granolaKeyFor(user: { id: number; granola_key_enc: string | null }): string | null {
+  if (user.granola_key_enc) return open(user.granola_key_enc);
+  return user.id === 1 ? process.env.GRANOLA_API_KEY || null : null;
 }
 
-async function doSync(): Promise<GranolaSyncResult> {
+/** Pull notes created since the last sync (first sync: 14 days back) and ingest them. One sync per user at a time. */
+export function syncGranola(userId: number): Promise<GranolaSyncResult> {
+  if (!syncing.has(userId)) syncing.set(userId, doSync(userId).finally(() => syncing.delete(userId)));
+  return syncing.get(userId)!;
+}
+
+/** Every user with a Granola key (the 2-minute poll). */
+export async function syncAllGranola() {
+  const users = await query<{ id: number; granola_key_enc: string | null }>("SELECT id, granola_key_enc FROM users WHERE granola_key_enc IS NOT NULL OR id = 1");
+  const out: Record<number, GranolaSyncResult> = {};
+  for (const u of users) if (granolaKeyFor(u)) out[u.id] = await syncGranola(u.id);
+  return out;
+}
+
+async function doSync(userId: number): Promise<GranolaSyncResult> {
   const started = new Date().toISOString();
-  if (!granolaConfigured()) return { ok: false, seen: 0, new_items: 0, pending: 0, error: "GRANOLA_API_KEY not set", last_sync: started };
-  const s = await getSettings();
+  const user = await userById(userId);
+  const key = user ? granolaKeyFor(user) : null;
+  if (!user || !key) return { ok: false, seen: 0, new_items: 0, pending: 0, error: "No Granola API key", last_sync: started };
+  const folderId = user.id === 1 ? granolaFolder() : null;
+  const s = await getSettings(userId);
   // overlap one hour: notes appear only once their summary is ready, so created_at can be before the last sync
   const after = s["granola.last_sync"]
     ? new Date(new Date(s["granola.last_sync"]).getTime() - 3600_000).toISOString()
@@ -153,22 +173,23 @@ async function doSync(): Promise<GranolaSyncResult> {
     let cursor: string | null = null;
     for (let page = 0; page < 20; page++) {
       const q = new URLSearchParams({ created_after: after, page_size: "30" });
-      if (granolaFolder()) q.set("folder_id", granolaFolder()!);
+      if (folderId) q.set("folder_id", folderId);
       if (cursor) q.set("cursor", cursor);
-      const list = await get<ListResp>(`/v1/notes?${q}`);
+      const list = await get<ListResp>(`/v1/notes?${q}`, key);
       for (const item of list.notes ?? []) {
         seen++;
-        const n = await getNote(item.id);
-        const folder = granolaFolder();
+        const n = await getNote(item.id, key);
+        const folder = folderId;
         if (folder && n.folder_membership && !n.folder_membership.some((f) => f.id === folder)) continue; // privacy: folder only
         const r = await ingest({
+          user_id: userId,
           source: "granola",
           external_id: n.id,
           sender: n.owner?.name ?? n.owner?.email ?? null,
           title: n.title ?? n.calendar_event?.event_title ?? "Granola meeting",
           meeting_at: n.calendar_event?.scheduled_start_time ?? n.created_at,
           raw_text: noteText(n),
-          known: meetingCounterpart(n),
+          known: meetingCounterpart(n, user.id === 1 ? undefined : [user.email]),
         });
         if (r.created) newItems++;
         if (r.created && r.status === "pending") pending++;
@@ -176,7 +197,7 @@ async function doSync(): Promise<GranolaSyncResult> {
       if (!list.hasMore || !list.cursor) break;
       cursor = list.cursor;
     }
-    await setSettings({ "granola.last_sync": started });
+    await setSettings(userId, { "granola.last_sync": started });
     return { ok: true, seen, new_items: newItems, pending, last_sync: started };
   } catch (e) {
     return { ok: false, seen, new_items: newItems, pending, error: (e as Error).message, last_sync: s["granola.last_sync"] ?? "" };

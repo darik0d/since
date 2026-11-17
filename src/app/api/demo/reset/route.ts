@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
   const [nordwind, kallio] = (process.env.DEMO_DOMAINS || "").split(",").map((s) => s.trim()).filter(Boolean);
   if (!nordwind) return NextResponse.json({ error: "DEMO_DOMAINS not set" }, { status: 400 });
-  const startup = await one<{ id: number }>("SELECT id FROM startups WHERE domain = $1", [nordwind]);
+  const startup = await one<{ id: number }>("SELECT id FROM startups WHERE domain = $1 AND user_id = 1", [nordwind]);
   if (!startup) return NextResponse.json({ error: `no watch for ${nordwind}: create it on /new first` }, { status: 404 });
 
   // 1. demo sites back to their starting state

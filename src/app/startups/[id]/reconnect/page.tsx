@@ -4,6 +4,7 @@ import { checkToken, draftCopy, loadFacts, renderEmail, smtpConfigured } from "@
 import { query } from "@/lib/db";
 import { fmtTime } from "@/lib/time";
 import { ReconnectEditor } from "./ReconnectEditor";
+import { startupOwner } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export default async function ReconnectPage({ params, searchParams }: { params: 
         initial={{ to: f.startup.founder_email ?? "", ...copy }}
         initialHtml={html}
         initialText={text}
-        canSend={smtpConfigured()}
+        canSend={smtpConfigured() && Boolean((await startupOwner(id))?.is_admin)}
       />
     </>
   );

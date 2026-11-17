@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { currentUserId } from "@/lib/auth";
+import { withUser } from "@/lib/usage";
 import { brandFor, normalizeDomain } from "@/lib/brand";
 import { preview } from "@/lib/describe";
 import { mapConditions } from "@/lib/mapping";
@@ -16,7 +18,8 @@ export async function POST(req: Request) {
   const text = String(body.text ?? "").trim();
   if (!domain.includes(".") || !text) return NextResponse.json({ error: "domain and text are required" }, { status: 400 });
 
-  try {
+  const uid = await currentUserId();
+  return withUser(uid, async () => { try {
     const sitePromise = discoverSite(domain);
     const [brand, site] = await Promise.all([brandFor(domain, sitePromise.then((s) => s.home.title)), sitePromise]);
     const conditions = await mapConditions(text, brand.name, domain);
@@ -36,5 +39,5 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });
-  }
+  } });
 }

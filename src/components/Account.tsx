@@ -1,25 +1,18 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useState } from "react";
 
-// The signed-in investor (single-user app): name + fund from Settings → Email signature.
-export function Account() {
-  const [a, setA] = useState({ name: "Daria Matviichuk", fund: "Northstar Ventures" });
-  useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((j) => j.settings && setA({ name: j.settings["investor.name"] || a.name, fund: j.settings["investor.fund"] || a.fund }))
-      .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const initials = a.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+// The signed-in investor (name + fund from Settings → Email signature), with sign out.
+export function Account({ name, fund }: { name: string; fund: string }) {
+  const initials = name.split(/[\s.@_-]+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   return (
-    <Link href="/settings" className="account" title="Signed in">
+    <div className="account">
       <span className="account-avatar">{initials}</span>
-      <span style={{ minWidth: 0 }}>
-        <span className="account-name">{a.name}</span>
-        <span className="account-fund">{a.fund}</span>
-      </span>
-    </Link>
+      <Link href="/settings" style={{ minWidth: 0, flex: 1 }} title="Settings">
+        <span className="account-name">{name}</span>
+        <span className="account-fund">{fund}</span>
+      </Link>
+      <form action="/api/auth/logout" method="post">
+        <button className="account-out" title="Sign out" aria-label="Sign out">⎋</button>
+      </form>
+    </div>
   );
 }

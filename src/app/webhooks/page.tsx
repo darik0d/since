@@ -1,3 +1,5 @@
+import { currentUser } from "@/lib/auth";
+import { notFound } from "next/navigation";
 import { publicBase } from "@/lib/env";
 import { query, type WebhookEventRow } from "@/lib/db";
 import { AutoRefresh } from "./AutoRefresh";
@@ -14,6 +16,7 @@ function pretty(raw: string) {
 }
 
 export default async function WebhookLog() {
+  if (!(await currentUser())?.is_admin) notFound();
   const rows = await query<WebhookEventRow>("SELECT * FROM webhook_events ORDER BY id DESC LIMIT 100");
   const base = publicBase();
 

@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ingest } from "@/lib/inbound";
+import { one } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export const maxDuration = 60;
 // Only mail FROM an address in INVESTOR_EMAILS is accepted. Nothing starts watching: the item becomes pending.
 type Addr = { Email: string; Name?: string };
 type Postmark = {
-  MessageID?: string; Subject?: string; Date?: string; TextBody?: string; StrippedTextReply?: string;
+  MessageID?: string; MailboxHash?: string; Subject?: string; Date?: string; TextBody?: string; StrippedTextReply?: string;
   FromFull?: Addr; ToFull?: Addr[]; CcFull?: Addr[]; BccFull?: Addr[];
 };
 
@@ -29,15 +30,23 @@ export async function POST(req: Request) {
   const m = (await req.json().catch(() => null)) as Postmark | null;
   if (!m?.MessageID) return NextResponse.json({ error: "not a Postmark inbound message" }, { status: 400 });
 
-  const investors = (process.env.INVESTOR_EMAILS ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+  // routed by the plus-address (since+<inbox_token>@...); the plain address belongs to the owner
+  const owner = await one<{ id: number; email: string }>(
+    m.MailboxHash ? "SELECT id, email FROM users WHERE inbox_token = $1" : "SELECT id, email FROM users WHERE id = 1",
+    m.MailboxHash ? [m.MailboxHash.toLowerCase()] : [],
+  );
+  const investors = [
+    owner?.email,
+    ...(owner?.id === 1 ? (process.env.INVESTOR_EMAILS ?? "").split(",") : []),
+  ].map((x) => (x ?? "").trim().toLowerCase()).filter(Boolean);
   const from = m.FromFull?.Email?.toLowerCase() ?? "";
-  // 200 so Postmark doesn't retry; the message is simply ignored
-  if (!investors.includes(from)) return NextResponse.json({ ok: true, ignored: "sender not in INVESTOR_EMAILS" });
+  // only the investor's own address is accepted; 200 so Postmark doesn't retry
+  if (!owner || !investors.includes(from)) return NextResponse.json({ ok: true, ignored: "unknown mailbox or sender is not the account's own email" });
 
   const inbound = (process.env.INBOUND_EMAIL_ADDRESS ?? "").toLowerCase();
   const skip = (a: Addr) => {
     const e = a.Email.toLowerCase();
-    return e === inbound || investors.includes(e) || e.endsWith("@inbound.postmarkapp.com");
+    return e === inbound || (inbound && e.split("@")[1] === inbound.split("@")[1]) || investors.includes(e) || e.endsWith("@inbound.postmarkapp.com");
   };
   // the founder: original To/Cc of a BCC'd mail, or the To:/Cc: lines of a forwarded one (the extractor reads those)
   const direct = [...(m.ToFull ?? []), ...(m.CcFull ?? [])].filter((a) => !skip(a));
@@ -53,6 +62,6 @@ export async function POST(req: Request) {
   ].filter((x, i) => x !== "" || i === 4).join("\n");
 
   const meeting = m.Date && !Number.isNaN(Date.parse(m.Date)) ? new Date(m.Date).toISOString() : null;
-  const r = await ingest({ source: "email", external_id: m.MessageID, sender: fmt(m.FromFull!), title: m.Subject ?? "Email", meeting_at: meeting, raw_text: raw });
+  const r = await ingest({ user_id: owner.id, source: "email", external_id: m.MessageID, sender: fmt(m.FromFull!), title: m.Subject ?? "Email", meeting_at: meeting, raw_text: raw });
   return NextResponse.json({ ok: true, ...r });
 }

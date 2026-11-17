@@ -1,3 +1,5 @@
+import { currentUserId } from "@/lib/auth";
+import { ownsCondition } from "@/lib/conditions";
 import { NextResponse } from "next/server";
 import { checkCondition } from "@/lib/conditions";
 import { context, ContextApiError } from "@/lib/context";
@@ -11,6 +13,7 @@ export const maxDuration = 120;
 // run for every Context.dev monitor of this condition (their webhooks trigger further re-checks).
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
+  if (!(await ownsCondition(id, await currentUserId()))) return NextResponse.json({ error: "not found" }, { status: 404 });
   const monitors = await query<{ id: string }>("SELECT id FROM monitors WHERE condition_id = $1", [id]);
   const queued = await Promise.all(
     monitors.map(async (m) => {

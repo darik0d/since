@@ -6,9 +6,9 @@ import { StatusChip } from "@/components/StatusChip";
 
 type Props = {
   initial: Settings;
-  telegram: { configured: boolean; bot: string | null };
+  telegram: { configured: boolean; bot: string | null; startToken: string };
   lastAlert: { label: string; message: string; ok: boolean; error: string | null; sent_at: string } | null;
-  granola: { folder: boolean; last_sync: string | null } | null;
+  granola: { connected: boolean; own: boolean; folder: boolean; last_sync: string | null };
   inboundEmail: string | null;
 };
 
@@ -60,12 +60,12 @@ export function SettingsForm({ initial, telegram, lastAlert, granola, inboundEma
             </p>
             {!s["telegram.chat_id"] && (
               <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-                1. Open <a className="link" href={`https://t.me/${telegram.bot}`} target="_blank" rel="noreferrer">t.me/{telegram.bot}</a> and press Start. 2. Click Detect chat.
+                1. Open <a className="link" href={`https://t.me/${telegram.bot}?start=${telegram.startToken}`} target="_blank" rel="noreferrer">your Since bot link</a> and press Start. 2. Click Connect.
               </p>
             )}
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn" disabled={busy !== ""} onClick={() => act("/api/settings/telegram/detect", "detect")}>
-                {busy === "detect" ? "Detecting…" : s["telegram.chat_id"] ? "Re-detect chat" : "Detect chat"}
+                {busy === "detect" ? "Checking…" : s["telegram.chat_id"] ? "Reconnect" : "Connect"}
               </button>
               {s["telegram.chat_id"] && (
                 <button className="btn" disabled={busy !== ""} onClick={() => act("/api/settings/telegram/test", "test")}>
@@ -108,7 +108,7 @@ export function SettingsForm({ initial, telegram, lastAlert, granola, inboundEma
         </div>
       </div>
 
-      {granola && <GranolaCard folder={granola.folder} initialLastSync={granola.last_sync} />}
+      <GranolaCard connected={granola.connected} own={granola.own} folder={granola.folder} initialLastSync={granola.last_sync} />
       {inboundEmail && <InboundEmailCard address={inboundEmail} />}
 
       {lastAlert && (
@@ -151,36 +151,50 @@ function Toggle({ on, locked, onChange }: { on: boolean; locked?: boolean; onCha
   );
 }
 
-function GranolaCard({ folder, initialLastSync }: { folder: boolean; initialLastSync: string | null }) {
+function GranolaCard({ connected, own, folder, initialLastSync }: { connected: boolean; own: boolean; folder: boolean; initialLastSync: string | null }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [lastSync, setLastSync] = useState(initialLastSync);
-  async function sync() {
+  const [isOn, setOn] = useState(connected);
+  const [key, setKey] = useState("");
+  async function call(method: string, path: string, body?: unknown) {
     setBusy(true);
     setMsg("");
     try {
-      const r = await fetch("/api/granola/sync", { method: "POST" });
+      const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
       const j = await r.json();
-      if (!j.ok) throw new Error(j.error ?? "sync failed");
-      setLastSync("just now");
-      setMsg(`${j.seen} note${j.seen === 1 ? "" : "s"} checked · ${j.pending} new “not yet”${j.pending === 1 ? "" : "s"} in the inbox`);
+      if (!r.ok || j.ok === false) throw new Error(j.error ?? "failed");
+      return j;
     } catch (e) {
       setMsg((e as Error).message);
+      return null;
     } finally {
       setBusy(false);
     }
+  }
+  async function sync() {
+    const j = await call("POST", "/api/granola/sync");
+    if (j) { setLastSync("just now"); setMsg(`${j.seen} note${j.seen === 1 ? "" : "s"} checked · ${j.pending} new “not yet”${j.pending === 1 ? "" : "s"} in the inbox`); }
   }
   return (
     <div className="glass card" style={{ display: "grid", gap: 12 }}>
       <h2 style={{ margin: 0 }}>Granola meeting notes</h2>
       <p className="muted" style={{ margin: 0, fontSize: 13 }}>
         Since reads new meeting notes every 2 minutes, recognises the startup from the meeting's attendees (e.g. bryan@nordwind.io → nordwind.io) and puts any &ldquo;not yet&rdquo; you gave into the Inbox.{" "}
-        {folder ? "Only meetings in your Since folder in Granola are read." : "All your Granola meetings are read (set a Since folder to limit this)."}
+        {isOn && (folder ? "Only meetings in your Since folder in Granola are read." : "")}
       </p>
-      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <button className="btn" disabled={busy} onClick={sync}>{busy ? "Syncing…" : "Sync now"}</button>
-        <span className="muted mono" style={{ fontSize: 12 }}>last sync: {lastSync ?? "never"}</span>
-      </div>
+      {isOn ? (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button className="btn" disabled={busy} onClick={sync}>{busy ? "Working…" : "Sync now"}</button>
+          <span className="muted mono" style={{ fontSize: 12 }}>last sync: {lastSync ?? "never"}</span>
+          {own && <button className="btn btn-sm" disabled={busy} style={{ marginLeft: "auto" }} onClick={async () => { if (await call("DELETE", "/api/settings/granola")) setOn(false); }}>Disconnect</button>}
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input className="input mono" style={{ flex: 1, minWidth: 220 }} placeholder="grn_… (Granola → Settings → API)" value={key} onChange={(e) => setKey(e.target.value)} />
+          <button className="btn btn-primary" disabled={busy || !key} onClick={async () => { if (await call("POST", "/api/settings/granola", { key })) { setOn(true); setKey(""); setMsg("Connected. Your key is stored encrypted."); } }}>{busy ? "Checking…" : "Connect"}</button>
+        </div>
+      )}
       {msg && <div className="muted" style={{ fontSize: 13 }}>{msg}</div>}
     </div>
   );

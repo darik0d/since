@@ -1,3 +1,5 @@
+import { currentUserId } from "@/lib/auth";
+import { ownsCondition } from "@/lib/conditions";
 import { NextResponse } from "next/server";
 import { getCondition, timeline } from "@/lib/conditions";
 import { query } from "@/lib/db";
@@ -11,6 +13,7 @@ export const maxDuration = 60;
 // Create whichever planned monitors this condition is missing (e.g. after a failed create).
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
+  if (!(await ownsCondition(id, await currentUserId()))) return NextResponse.json({ error: "not found" }, { status: 404 });
   const c = await getCondition(id);
   if (!c) return NextResponse.json({ error: "not found" }, { status: 404 });
   const have = new Set((await query<{ role: string }>("SELECT role FROM monitors WHERE condition_id = $1", [id])).map((r) => r.role));

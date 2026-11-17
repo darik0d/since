@@ -1,3 +1,4 @@
+import { currentUser } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { normalizeDomain } from "@/lib/brand";
 import { checkCondition, timeline } from "@/lib/conditions";
@@ -21,21 +22,28 @@ export async function POST(req: Request) {
     .filter((c: DraftCondition) => MECHANISMS.includes(c.mechanism) && c.original_words)
     .map(normalize);
   if (!domain || !drafts.length) return NextResponse.json({ error: "domain and at least one condition required" }, { status: 400 });
+  const user = (await currentUser())!;
+  // pilot cost control: at most max_watches startups per user (re-saving an existing one is fine)
+  const existing = await one("SELECT 1 FROM startups WHERE user_id = $1 AND domain = $2", [user.id, domain]);
+  const count = (await one<{ n: number }>("SELECT COUNT(*)::int AS n FROM startups WHERE user_id = $1", [user.id]))?.n ?? 0;
+  if (!existing && count >= user.max_watches) {
+    return NextResponse.json({ error: `You're watching ${count} startups, the pilot limit. Remove one to add another.` }, { status: 400 });
+  }
 
   const startup = await one<{ id: number }>(
-    `INSERT INTO startups (domain, name, logo_url, met_on, met_where, original_text, founder_name, founder_email)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-     ON CONFLICT (domain) DO UPDATE SET name = EXCLUDED.name, logo_url = COALESCE(EXCLUDED.logo_url, startups.logo_url),
+    `INSERT INTO startups (domain, name, logo_url, met_on, met_where, original_text, founder_name, founder_email, user_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     ON CONFLICT (user_id, domain) DO UPDATE SET name = EXCLUDED.name, logo_url = COALESCE(EXCLUDED.logo_url, startups.logo_url),
        met_on = EXCLUDED.met_on, met_where = EXCLUDED.met_where, original_text = EXCLUDED.original_text,
        founder_name = COALESCE(EXCLUDED.founder_name, startups.founder_name),
        founder_email = COALESCE(EXCLUDED.founder_email, startups.founder_email)
      RETURNING id`,
     [domain, b.company || null, b.logo_url || null, b.met_on || null, b.met_where || null, b.text || null,
-     b.founder_name?.trim() || null, b.founder_email?.trim() || null],
+     b.founder_name?.trim() || null, b.founder_email?.trim() || null, user.id],
   );
   // started from an inbox item: mark it accepted
   if (Number(b.inbox_id)) {
-    await one("UPDATE inbound_items SET status = 'accepted', startup_id = $2 WHERE id = $1 RETURNING id", [Number(b.inbox_id), startup!.id]);
+    await one("UPDATE inbound_items SET status = 'accepted', startup_id = $2 WHERE id = $1 AND user_id = $3 RETURNING id", [Number(b.inbox_id), startup!.id, user.id]);
   }
   const site = await discoverSite(domain);
   // Cala entity match before the baseline (funding_round / team_size need it). Website must match the

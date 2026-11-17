@@ -59,9 +59,9 @@ export type Facts = {
 };
 
 export async function loadFacts(startupId: number): Promise<Facts | null> {
-  const s = await one<Facts["startup"] & { met_on_raw: string | null }>(
+  const s = await one<Facts["startup"] & { met_on_raw: string | null; user_id: number }>(
     `SELECT id, COALESCE(name, domain) AS name, domain, display_domain, logo_url, to_char(met_on, 'FMDD Mon YYYY') AS met_on,
-            met_on::text AS met_on_raw, met_where, original_text, founder_name, founder_email
+            met_on::text AS met_on_raw, met_where, original_text, founder_name, founder_email, user_id
      FROM startups WHERE id = $1`,
     [startupId],
   );
@@ -121,8 +121,8 @@ export async function loadFacts(startupId: number): Promise<Facts | null> {
     // the same finding seen on several checks (different snapshots) appears once, at its first sighting
     .filter((e, i, all) => all.findIndex((x) => x.text === e.text && x.url === e.url) === i);
 
-  const st = await getSettings();
-  const { met_on_raw, ...startup } = s;
+  const st = await getSettings(s.user_id);
+  const { met_on_raw, user_id, ...startup } = s;
   return {
     startup,
     conditions: conds.map(({ params_json, ...c }) => ({ ...c, source_name: sourceName(c.ev_url) })),

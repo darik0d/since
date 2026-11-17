@@ -42,3 +42,32 @@ export async function sendTelegram(chatId: string, html: string, buttons: { text
     reply_markup: usable.length ? { inline_keyboard: [usable] } : undefined,
   });
 }
+
+/**
+ * Multi-user binding without setWebhook: read getUpdates from a stored offset, bind every
+ * "/start <tg_token>" to that user's chat, and advance the offset so updates are never re-read.
+ */
+export async function processUpdates(): Promise<number> {
+  if (!telegramConfigured()) return 0;
+  const { one, query } = await import("./db");
+  const { setSettings } = await import("./settings");
+  const st = await one<{ value: number }>("SELECT value FROM app_state WHERE key = 'tg.offset'");
+  const updates = await tg<any[]>("getUpdates", { offset: st?.value ?? 0, limit: 100, timeout: 0, allowed_updates: ["message"] });
+  let bound = 0, last = st?.value ?? 0;
+  for (const u of updates) {
+    last = Math.max(last, u.update_id + 1);
+    const m = u.message;
+    const token = /^\/start\s+([a-z0-9]+)/i.exec(m?.text ?? "")?.[1];
+    if (!m?.chat || !token) continue;
+    const user = await one<{ id: number }>("SELECT id FROM users WHERE tg_token = $1", [token.toLowerCase()]);
+    if (!user) continue;
+    const title = m.chat.title ?? [m.chat.first_name, m.chat.last_name].filter(Boolean).join(" ") ?? m.chat.username ?? "chat";
+    await setSettings(user.id, { "telegram.chat_id": String(m.chat.id), "telegram.chat_title": title, "telegram.enabled": true });
+    await sendTelegram(String(m.chat.id), "<b>Since is connected.</b>\nYou'll get a message here when a startup you said “not yet” to meets your bar, with the evidence.").catch(() => {});
+    bound++;
+  }
+  if (updates.length) {
+    await query("INSERT INTO app_state (key, value) VALUES ('tg.offset', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [JSON.stringify(last)]);
+  }
+  return bound;
+}
